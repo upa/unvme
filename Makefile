@@ -31,25 +31,21 @@
 
 include ./Makefile.def
 
+INSTALLDIR ?= /usr/local
 SUBDIRS := src test ioengine doc
 
-ifneq ($(wildcard src/.model),)
-        MAKE_MODEL := $(shell cat src/.model)
-else
-        MAKE_MODEL := $(DEFAULT_MODEL)
-endif
+all: $(SUBDIRS)
 
-all model_apc model_tpc model_cs: $(SUBDIRS)
-
-model_apc: MAKE_MODEL := model_apc
-model_tpc: MAKE_MODEL := model_tpc
-model_cs:  MAKE_MODEL := model_cs
-
-src:
-	$(MAKE) -C $@ $(MAKE_MODEL)
-
-$(filter-out src,$(SUBDIRS)):
+$(SUBDIRS):
 	$(MAKE) -C $@
+
+install: $(SUBDIRS)
+	mkdir -p $(INSTALLDIR)/include $(INSTALLDIR)/lib
+	/bin/install -m644 src/libunvme.h $(INSTALLDIR)/include
+	/bin/install -m644 src/libunvme.a $(INSTALLDIR)/lib
+
+uninstall:
+	$(RM) $(INSTALLDIR)/include/libunvme.* $(INSTALLDIR)/lib/libunvme.*
 
 lint:
 	@(for d in $(SUBDIRS); do $(MAKE) -C $$d lint; done)
@@ -57,5 +53,5 @@ lint:
 clean:
 	@(for d in $(SUBDIRS); do $(MAKE) -C $$d clean; done)
 
-.PHONY: all model_apc model_tpc model_cs lint clean $(SUBDIRS)
+.PHONY: all lint clean $(SUBDIRS)
 

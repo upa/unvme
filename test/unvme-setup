@@ -4,10 +4,10 @@
 PROG=$(basename "$0")
 
 USAGE="Usage:
-    ${PROG}                 # enable all SSDs for UNVMe
-    ${PROG} [BB:DD.F]...    # enable specific PCI SSD for UNVMe
-    ${PROG} reset           # reset all SSDs to inbox NVMe driver
-    ${PROG} show            # show all SSD driver info"
+    ${PROG}                 # enable all NVMe devices for UNVMe
+    ${PROG} [BB:DD.F]...    # enable specific NVMe devices for UNVMe
+    ${PROG} reset           # reset all NVMe devices to kernel driver
+    ${PROG} show            # show all NVMe devices mapping info"
 
 trap 'exit 1' TERM
 export EXIT_PID=$$
@@ -71,7 +71,7 @@ vfio_unbind() {
 }
 
 # 
-# function: unbind all SSD devices from VFIO driver
+# function: unbind all NVMe devices from VFIO driver
 #
 vfio_unbind_all() {
     for d in $(lspci -Dn | grep '0108: ' | cut -d" " -f1); do
@@ -106,12 +106,12 @@ print_map() {
 #
 SSDLIST=$(lspci -Dn | grep '0108: ' | cut -d" " -f1)
 if [ -z "${SSDLIST}" ]; then
-    echo "No SSD found in system"
+    echo "No NVMe device found in system"
     exit 1
 fi
 
 if [ $# -eq 0 ]; then
-    echo -e "# Setup all SSD devices for UNVMe driver"
+    echo -e "# Setup all NVMe devices for UNVMe driver"
     vfio_check
     for d in ${SSDLIST}; do
         vfio_bind $d
@@ -119,7 +119,7 @@ if [ $# -eq 0 ]; then
     print_map
 
 elif [ "$1" == "reset" ]; then
-    echo -e "# Reset all SSD devices to kernel NVMe driver"
+    echo -e "# Reset all NVMe devices to kernel space driver"
     vfio_unbind_all
     mycmd "modprobe -r nvme"
     mycmd "modprobe nvme"
@@ -135,7 +135,7 @@ else
         case $i in
         [0-9][0-9]:*)
             if [ -z "$(lspci -n | grep $i\ 0108\:)" ]; then
-                echo -e "No SSD found at PCI $i"
+                echo -e "No NVMe device at PCI $i"
                 myusage
                 exit
             fi
@@ -147,7 +147,7 @@ else
         esac
     done
 
-    echo -e "# Setup specified SSD device(s) for UNVMe driver"
+    echo -e "# Setup specific NVMe device(s) for UNVMe driver"
     for i in $*; do
         vfio_bind $(find /sys/bus/pci/devices/*$i -printf %f)
     done

@@ -49,7 +49,7 @@
 #include "unvme_log.h"
 
 /// Starting device DMA address
-#define VFIO_IOVA           0xa100000000
+#define VFIO_IOVA           0x8800000000
 
 /// Adjust to 4K page aligned size
 #define VFIO_PASIZE(n)      (((n) + 0xfff) & ~0xfff)
@@ -353,7 +353,7 @@ vfio_device_t* vfio_create(int pci)
     vfio_dev_t* dev = zalloc(sizeof(*dev));
     dev->pci = pci;
     dev->iova = VFIO_IOVA;
-    if (pthread_spin_init(&dev->lock, PTHREAD_PROCESS_PRIVATE)) return NULL;
+    if (pthread_spin_init(&dev->lock, PTHREAD_PROCESS_SHARED)) return NULL;
 
     // map vfio context
     if ((dev->contfd = open("/dev/vfio/vfio", O_RDWR)) < 0) {

@@ -17,12 +17,7 @@
 #include "fio.h"
 #include "optgroup.h"       // since fio 2.4
 
-#if 0
-    #define DEBUG(fmt, arg...)  printf("#" fmt "\n", ##arg)
-#else
-    #define DEBUG(fmt, arg...)
-#endif
-
+#define DEBUG(fmt, arg...)  //fprintf(stderr, "#" fmt "\n", ##arg)
 #define TDEBUG(fmt, arg...) DEBUG("%s.%d " fmt, __func__, td->thread_number, ##arg)
 
 typedef struct {
@@ -63,7 +58,6 @@ static int do_unvme_init(char* pciname, struct thread_data *td)
         if (pciname[2] == '.') pciname[2] = ':';
         unvme.ns = unvme_open(pciname, nsid, qc, qd + 1);
         if (unvme.ns) {
-            printf("Model %s\n", unvme.ns->model);
             DEBUG("%s unvme_open %s nsid=%d q=%dx%d",
                   __func__, pciname, nsid, qc, qd);
         } else {
@@ -89,9 +83,7 @@ static struct io_u* fio_unvme_event(struct thread_data *td, int event)
 
     if (udata->head != udata->tail) {
         io_u = udata->iocq[udata->head];
-        TDEBUG("GET %d page=%d lba=%#lx", udata->head,
-               ((unvme_page_t*)io_u->engine_data)->id,
-               ((unvme_page_t*)io_u->engine_data)->slba);
+        TDEBUG("GET.%d %p", udata->head, io_u->buf);
         if (++udata->head > td->o.iodepth) udata->head = 0;
     }
     return io_u;
@@ -117,22 +109,29 @@ static int fio_unvme_getevents(struct thread_data *td, unsigned int min,
     }
 
     for (;;) {
-        unvme_page_t* page = unvme_apoll(unvme.ns, td->thread_number - 1, 0);
+        struct io_u* io_u;
+        int i;
 
-        if (page) {
-            udata->iocq[udata->tail] = page->data;
-            TDEBUG("PUT %d page=%d lba=%#lx", udata->tail, page->id, page->slba);
-            if (++udata->tail > td->o.iodepth) udata->tail = 0;
-            if (++events >= min) break;
-        } else if (t) {
-            clock_gettime(CLOCK_MONOTONIC_RAW, &t1);
-            uint64_t elapse = ((t1.tv_sec - t0.tv_sec) * 1000000000L)
-                              + t1.tv_nsec - t0.tv_nsec;
-            if (elapse > timeout) break;
+        io_u_qiter(&td->io_u_all, io_u, i)
+        {
+            if (io_u->engine_data) {
+                if (!unvme_apoll(io_u->engine_data, 0)) {
+                    io_u->engine_data = NULL;
+                    udata->iocq[udata->tail] = io_u;
+                    TDEBUG("PUT.%d %p", udata->tail, io_u->buf);
+                    if (++udata->tail > td->o.iodepth) udata->tail = 0;
+                    if (++events >= min) return events;
+                } else if (t) {
+                    clock_gettime(CLOCK_MONOTONIC_RAW, &t1);
+                    uint64_t elapse = ((t1.tv_sec - t0.tv_sec) * 1000000000L)
+                                      + t1.tv_nsec - t0.tv_nsec;
+                    if (elapse > timeout) return events;
+                }
+            }
         }
     }
 
-    return events;
+    return 0;
 }
 
 /*
@@ -152,20 +151,23 @@ static int fio_unvme_queue(struct thread_data *td, struct io_u *io_u)
      */
     fio_ro_check(td, io_u);
 
-    int ret = 1;
-    unvme_page_t* page = io_u->engine_data;
-    page->slba = io_u->offset / unvme.ns->blocksize;
-    page->nlb = io_u->xfer_buflen / unvme.ns->blocksize;
+    int err = 0;
+    void* buf = io_u->buf;
+    u64 slba = io_u->offset / unvme.ns->blocksize;
+    int nlb = io_u->xfer_buflen / unvme.ns->blocksize;
+    int q = td->thread_number - 1;
 
     switch (io_u->ddir) {
     case DDIR_READ:
-        TDEBUG("READ page=%d lba=%#lx", page->id, page->slba);
-        ret = unvme_aread(unvme.ns, page);
+        TDEBUG("READ q%d %p %#lx %d", q, buf, slba, nlb);
+        if (!(io_u->engine_data = unvme_aread(unvme.ns, q, buf, slba, nlb)))
+            err = 1;
         break;
 
     case DDIR_WRITE:
-        TDEBUG("WRITE page=%d lba=%#lx", page->id, page->slba);
-        ret = unvme_awrite(unvme.ns, page);
+        TDEBUG("WRITE q%d %p %#lx %d", q, buf, slba, nlb);
+        if (!(io_u->engine_data = unvme_awrite(unvme.ns, q, buf, slba, nlb)))
+            err = 1;
         break;
 
     default:
@@ -178,7 +180,7 @@ static int fio_unvme_queue(struct thread_data *td, struct io_u *io_u)
      * if we could queue no more at this point (you'd have to
      * define ->commit() to handle that.
      */
-    return ret ? FIO_Q_COMPLETED : FIO_Q_QUEUED;
+    return err ? FIO_Q_COMPLETED : FIO_Q_QUEUED;
 }
 
 /*
@@ -187,6 +189,7 @@ static int fio_unvme_queue(struct thread_data *td, struct io_u *io_u)
  */
 static int fio_unvme_open(struct thread_data *td, struct fio_file *f)
 {
+    TDEBUG();
     return 0;
 }
 
@@ -195,6 +198,7 @@ static int fio_unvme_open(struct thread_data *td, struct fio_file *f)
  */
 static int fio_unvme_close(struct thread_data *td, struct fio_file *f)
 {
+    TDEBUG();
     return 0;
 }
 
@@ -241,52 +245,17 @@ static void fio_unvme_cleanup(struct thread_data *td)
     pthread_mutex_unlock(&unvme.mutex);
 }
 
-/*
- * The ->io_u_init() function is called once for each queue depth entry
- * (numjobs x iodepth) prior to .init and after .get_file_size.
- * It is needed if io_u buffer needs to be remapped.
- */
-static int fio_unvme_io_u_init(struct thread_data *td, struct io_u *io_u)
+static int fio_unvme_iomem_alloc(struct thread_data *td, size_t len)
 {
-    int np = 0;
-    if (td->o.bs[DDIR_READ] > np) np = td->o.bs[DDIR_READ];
-    if (td->o.bs[DDIR_WRITE] > np) np = td->o.bs[DDIR_WRITE];
-    if (td->o.max_bs[DDIR_READ] > np) np = td->o.max_bs[DDIR_READ];
-    if (td->o.max_bs[DDIR_WRITE] > np) np = td->o.max_bs[DDIR_WRITE];
-
-    np = ((np + unvme.ns->pagesize - 1) & ~(unvme.ns->pagesize - 1));
-    np /= unvme.ns->pagesize;
-    if (np > unvme.ns->maxppio) {
-        error(0, 0, "%s np %d > %d", __func__, np, unvme.ns->maxppio);
-        return 1;
-    }
-
-    unvme_page_t* page = unvme_alloc(unvme.ns, td->thread_number - 1, np);
-    if (!page) {
-        error(0, 0, "%s unvme_alloc", __func__);
-        return 1;
-    }
-    page->data = io_u;
-    io_u->engine_data = page;
-    TDEBUG("page=%d", page->id);
-
-    return 0;
+    td->orig_buffer = unvme_alloc(unvme.ns, len);
+    TDEBUG("%p %ld", td->orig_buffer, len);
+    return td->orig_buffer == NULL;
 }
 
-/*
- * The ->io_u_free() function is called once for each queue depth entry
- * (numjobs x iodepth) prior to .init and after .get_file_size.
- * It is needed if io_u buffer needs to be remapped.
- */
-static void fio_unvme_io_u_free(struct thread_data *td, struct io_u *io_u)
+static void fio_unvme_iomem_free(struct thread_data *td)
 {
-    unvme_page_t* page = io_u->engine_data;
-    if (page) {
-        TDEBUG("page=%d", page->id);
-        assert(page->data == io_u);
-        unvme_free(unvme.ns, page);
-        io_u->engine_data = NULL;
-    }
+    TDEBUG("%p", td->orig_buffer);
+    unvme_free(unvme.ns, td->orig_buffer);
 }
 
 /*
@@ -342,8 +311,8 @@ struct ioengine_ops ioengine = {
     .open_file          = fio_unvme_open,
     .close_file         = fio_unvme_close,
     .get_file_size      = fio_unvme_get_file_size,
-    .io_u_init          = fio_unvme_io_u_init,
-    .io_u_free          = fio_unvme_io_u_free,
+    .iomem_alloc        = fio_unvme_iomem_alloc,
+    .iomem_free         = fio_unvme_iomem_free,
     .flags              = FIO_NOEXTEND | FIO_RAWIO,
     .options            = fio_unvme_options,
     .option_struct_size = sizeof(unvme_options_t),

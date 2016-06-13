@@ -52,8 +52,15 @@
 #define ERROR(fmt, arg...)  error(1, 0, "ERROR: " fmt "\n", ##arg)
 
 /// macro to print an io related error message
-#define IOERROR(s, p)       ERROR(s " pi=%d lba=%#lx nb=%d stat=%#x", \
-                                  (p)->id, (p)->slba, (p)->nlb, (p)->stat)
+#define IOERROR(s, p)       ERROR(s " buf=%p lba=%#lx", (p)->buf, (p)->lba)
+
+/// page structure
+typedef struct {
+    void*           buf;        ///< IO buffer
+    u64             lba;        ///< lba
+    unvme_iod_t     iod;        ///< returned IO descriptor
+    u64             tsc;        ///< tsc time
+} lat_page_t;
 
 // Global variables
 static const unvme_ns_t* ns;    ///< unvme namespace pointer
@@ -61,7 +68,6 @@ static int nsid = 1;            ///< namespace id
 static int qcount = 1;          ///< queue count
 static int qsize = 8;           ///< queue size
 static int runtime = 30;        ///< run time in seconds
-static int rwmode = 0;          ///< read/write (0=read 1=write)
 static u64 endtsc = 0;          ///< end run tsc
 static sem_t sem1;              ///< semaphore to start thread
 static sem_t sem2;              ///< semaphore to start test
@@ -78,119 +84,87 @@ static u64 max_clat;            ///< maximum completimesn time
 /**
  * Submit an io and record the submission latency time.
  */
-static void io_submit(int q, unvme_page_t* p)
+static void io_submit(int q, int rw, lat_page_t* p)
 {
     // change lba
-    p->slba += ns->nbpp << 1;
-    if (p->slba > last_lba) p->slba &= last_lba;
+    p->lba += ns->nbpp << 1;
+    if (p->lba > last_lba) p->lba &= last_lba;
 
-    p->data = (void*)rdtsc();
-    if (rwmode) {
-        if (unvme_awrite(ns, p)) IOERROR("awrite", p);
+    p->tsc = rdtsc();
+    if (rw) {
+        p->iod = unvme_awrite(ns, q, p->buf, p->lba, ns->nbpp);
+        if (!p->iod) IOERROR("awrite", p);
     } else {
-        if (unvme_aread(ns, p)) IOERROR("aread", p);
+        p ->iod = unvme_aread(ns, q, p->buf, p->lba, ns->nbpp);
+        if (!p->iod) IOERROR("aread", p);
     }
     ioc++;
 
-    u64 ts = rdtsc_elapse((u64)(p->data));
+    u64 ts = rdtsc_elapse((u64)(p->tsc));
     if (min_slat > ts) min_slat = ts;
     if (max_slat < ts) max_slat = ts;
     avg_slat += ts;
 }
 
 /**
- * Set up and submit the pages.
+ * Queue thread test.
  */
-static unvme_page_t* submit_pages(int q)
+static void* run_thread(void* arg)
 {
-    int i;
+    int rw = (long)arg >> 16;
+    int q = (long)arg & 0xffff;
 
-    unvme_page_t* pages = unvme_alloc(ns, q, ns->maxiopq);
-    if (!pages) ERROR("unvme_alloc q=%d n=%d", q, ns->maxiopq);
     u64 lba = (q * qcount * qsize * ns->nbpp) << 1;
-    unvme_page_t* p = pages;
+    lat_page_t* pages = calloc(ns->maxiopq, sizeof(lat_page_t));
+    lat_page_t* p = pages;
+    int i;
     for (i = 0; i < ns->maxiopq; i++) {
-        lba += ns->nbpp << 1;
+        p->buf = unvme_alloc(ns, ns->pagesize);
+        lba += (ns->nbpp << 1);
         if (lba > last_lba) lba = i * ns->nbpp;
-        p->slba = lba;
+        p->lba = lba;
         p++;
     }
 
     sem_post(&sem1);
     sem_wait(&sem2);
 
-    for (i = 0; i < ns->maxiopq; i++) io_submit(q, pages + i);
-    return pages;
-}
+    for (i = 0; i < ns->maxiopq; i++) io_submit(q, rw, pages + i);
 
-/**
- * Thread using specific page poll method.
- */
-static void* poll_thread(void* arg)
-{
-    int q = (long)arg;
-    u8* cpl = calloc(ns->maxiopq, sizeof(u8));
-    unvme_page_t* pages = submit_pages(q);
-
-    int i = 0;
+    i = 0;
     int pending = ns->maxiopq;
     do {
-        unvme_page_t* p = pages + i;
-        if (!cpl[i] && unvme_poll(ns, p, 0)) {
-            u64 tc = rdtsc_elapse((u64)(p->data));
+        p = pages + i;
+        if (p->iod != 0 && unvme_apoll(p->iod, 0) == 0) {
+            u64 tc = rdtsc_elapse(p->tsc);
             if (min_clat > tc) min_clat = tc;
             if (max_clat < tc) max_clat = tc;
             avg_clat += tc;
         
-            if ((tc + (u64)(p->data)) < endtsc) {
-                io_submit(q, p);
+            if ((tc + p->tsc) < endtsc) {
+                io_submit(q, rw, p);
             } else {
-                cpl[i] = 1;
+                p->iod = 0;
                 pending--;
             }
         }
         if (++i == ns->maxiopq) i = 0;
     } while (pending > 0);
 
-    free(cpl);
-    unvme_free(ns, pages);
+    p = pages;
+    for (i = 0; i < ns->maxiopq; i++) {
+        unvme_free(ns, p->buf);
+        p++;
+    }
+    free(pages);
     return 0;
 }
 
-
-/**
- * Thread using anonymous poll method.
- */
-static void* apoll_thread(void* arg)
-{
-    int q = (long)arg;
-    unvme_page_t* pages = submit_pages(q);
-
-    int pending = ns->maxiopq;
-    do {
-        unvme_page_t* p = unvme_apoll(ns, q, 0);
-        if (p) {
-            u64 tc = rdtsc_elapse((u64)(p->data));
-            if (min_clat > tc) min_clat = tc;
-            if (max_clat < tc) max_clat = tc;
-            avg_clat += tc;
-        
-            if ((tc + (u64)(p->data)) < endtsc) {
-                io_submit(q, p);
-            } else {
-                pending--;
-            }
-        }
-    } while (pending > 0);
-
-    unvme_free(ns, pages);
-    return 0;
-}
 
 /**
  * Run test to spawn one thread for each queue.
  */
-void run_test(const char* name, void *(thread)(void*))
+void run_test(const char* name, int rw)
 {
     ioc = 0;
     avg_slat = 0;
@@ -202,7 +176,8 @@ void run_test(const char* name, void *(thread)(void*))
 
     int q;
     for (q = 0; q < qcount; q++) {
-        pthread_create(&ses[q], 0, thread, (void*)(long)q);
+        long arg = (rw << 16) + q;
+        pthread_create(&ses[q], 0, run_thread, (void*)arg);
         sem_wait(&sem1);
     }
 
@@ -222,7 +197,7 @@ void run_test(const char* name, void *(thread)(void*))
             min_clat, max_clat, avg_clat/ioc, ioc);
     */
     u64 utsc = rdtsc_second() / 1000000;
-    printf("%s: slat=(%.2f %.2f %.2f) lat=(%.2f %.2f %.2f) ioc=%ld\n",
+    printf("%s: slat=(%.2f %.2f %.2f) lat=(%.2f %.2f %.2f) usecs ioc=%ld\n",
             name, (double)min_slat/utsc, (double)max_slat/utsc,
             (double)avg_slat/ioc/utsc, (double)min_clat/utsc,
             (double)max_clat/utsc, (double)avg_clat/ioc/utsc, ioc);
@@ -237,7 +212,7 @@ int main(int argc, char* argv[])
 "Usage: %s [OPTION]... pciname\n\
          -n       nsid (default to 1)\n\
          -q       queue count (default 1)\n\
-         -d       queue size (default 8)\n\
+         -d       queue depth (default 8)\n\
          -t       run time in seconds (default 30)\n\
          pciname  PCI device name (as BB:DD.F) format\n";
 
@@ -249,17 +224,19 @@ int main(int argc, char* argv[])
         switch (opt) {
         case 'n':
             nsid = atoi(optarg);
+            if (nsid <= 0) error(1, 0, "n must be > 0");
             break;
         case 'q':
             qcount = atoi(optarg);
-            if (qcount < 1) error(1, 0, "qcount must be > 0");
+            if (qcount <= 0) error(1, 0, "q must be > 0");
             break;
         case 'd':
             qsize = atoi(optarg);
-            if (qsize < 2) error(1, 0, "qsize must be > 1");
+            if (qsize <= 1) error(1, 0, "d must be > 1");
             break;
         case 't':
             runtime = atoi(optarg);
+            if (runtime <= 0) error(1, 0, "r must be > 0");
             break;
         default:
             error(1, 0, usage, prog);
@@ -268,31 +245,25 @@ int main(int argc, char* argv[])
     if (optind >= argc) error(1, 0, usage, prog);
     char* pciname = argv[optind];
 
-    printf("UNVMe %s latency test qc=%d qd=%d sec=%ldtsc\n",
-           pciname, qcount, qsize, rdtsc_second());
-
+    printf("LATENCY TEST BEGIN\n");
     ns = unvme_open(pciname, nsid, qcount, qsize);
     if (!ns) ERROR("open %s failed", pciname);
-    printf("blocks=%ld pagesize=%d maxppio=%d maxiopq=%d model=%s\n",
-           ns->blockcount, ns->pagesize, ns->maxppio, ns->maxiopq, ns->model);
     last_lba = (ns->blockcount - ns->nbpp) & ~(u64)(ns->nbpp - 1);
+    printf("nsid=%d qc=%d qd=%d cap=%ld mbio=%d lastlba=%#lx\n",
+            nsid, qcount, qsize, ns->blockcount, ns->maxbpio, last_lba);
 
     sem_init(&sem1, 0, 0);
     sem_init(&sem2, 0, 0);
     ses = calloc(qcount, sizeof(pthread_t));
 
-    rwmode = 0;
-    run_test("read poll  ", poll_thread);
-    run_test("read apoll ", apoll_thread);
-
-    rwmode = 1;
-    run_test("write poll ", poll_thread);
-    run_test("write apoll", apoll_thread);
+    run_test("read", 0);
+    run_test("write", 0);
 
     free(ses);
     sem_destroy(&sem1);
     sem_destroy(&sem2);
     unvme_close(ns);
+    printf("LATENCY TEST COMPLETE\n");
 
     return 0;
 }

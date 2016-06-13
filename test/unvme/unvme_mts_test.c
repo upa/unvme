@@ -31,7 +31,7 @@
 
 /**
  * @file
- * @brief UNVMe multi threaded/session test.
+ * @brief UNVMe multi-threaded/session test.
  */
 
 #include <stdio.h>
@@ -43,158 +43,157 @@
 #include <pthread.h>
 #include <sched.h>
 #include <semaphore.h>
-#include <sys/time.h>
+#include <time.h>
 
 #include "libunvme.h"
 
-/// macro to print an error message
-#define ERROR(fmt, arg...)  error(1, 0, "ERROR: " fmt "\n", ##arg)
-
-/// macro to print an IO related error message
-#define IOERROR(s,t,p)  ERROR(s " t=%d q=%d pi=%d lba=%#lx nb=%d stat=%#x", \
-                        t, (p)->qid, (p)->id, (p)->slba, (p)->nlb, (p)->stat)
-
 // Global variables
-static char* pciname;       ///< PCI device name
-static int nsid = 1;        ///< namespace id
-static int numses = 14;     ///< number of thread sessions
-static int qcount = 2;      ///< number of queues to create
-static int qsize = 64;      ///< queue size
-static int minbpio = 1;     ///< minimum number of blocks per IO
-static int maxbpio = 0;     ///< maximum number of blocks per IO
-static int loop = 1;        ///< test loop count
-static sem_t sm_open;       ///< semaphore to wait for all open completion
-static sem_t sm_test;       ///< semaphore to start IO testing
+static char* pciname;           ///< PCI device name
+static int nsid = 1;            ///< namespace id
+static int numses = 4;          ///< number of thread sessions
+static int qcount = 6;          ///< number of queues per session to create
+static int qsize = 100;         ///< queue size
+static int maxnlb = 2048;       ///< maximum number of blocks per IO
+static sem_t sm_ready;          ///< semaphore for ready
+static sem_t sm_start;          ///< semaphore for start
+
+/// thread session arguments
+typedef struct {
+    const unvme_ns_t*   ns;     ///< namespace handle
+    int                 id;     ///< session id
+    int                 qid;    ///< queue id
+    u64                 slba;   ///< starting lba
+} ses_arg_t;
 
 
 /**
- * Test run session.
+ * Thread per queue.
  */
-void* test_session(void* arg)
+void* test_queue(void* arg)
 {
-    u32 *buf, pat;
-    struct timeval t0, t1;
-    int q, d, i, l, n, cpcount;
-    int apoll = (long)arg >> 32;
-    int sesid = (long)arg;
-    int tid = sesid + 1;
+    ses_arg_t* ses = arg;
+    u64 slba, wlen, w, *p;
+    int nlb, l, i;
 
-    printf("Thread #%d started\n", tid);
-    const unvme_ns_t* ns = unvme_open(pciname, nsid, qcount, qsize);
-    if (!ns) ERROR("unvme_open t=%d qc=%d qs=%d failed", tid, qcount, qsize);
+    sem_post(&sm_ready);
+    sem_wait(&sm_start);
 
-    // max number of IO unique address spaces available for a thread session
-    u64 maxlbas = ns->blockcount / numses;
-    if ((maxlbas / maxbpio) <= qsize) ERROR("not enough disk space for test");
-    u64 slba = sesid * maxlbas;
-    u64 elba = slba + maxlbas - 1;
-    printf("[%d] lba=%#lx-%#lx\n", tid, slba, elba);
-    u8* cpstats = malloc(ns->maxiopq);
+    printf("Test s%d q%d started (lba %#lx)\n", ses->id, ses->qid, ses->slba);
+    unvme_iod_t* iod = calloc(qsize, sizeof(unvme_iod_t));
+    void** buf = calloc(qsize, sizeof(void*));
+    int* buflen = calloc(qsize, sizeof(int));
 
-    sem_post(&sm_open);
-    sem_wait(&sm_test);
-
-    for (l = 1; l <= loop; l++) {
-        u64 lba = (elba - maxbpio) & ~(ns->blocksize - 1);
-        if (!(l & 0xf)) {
-            printf("[%02d.%d] lba=%#lx          \r", tid, l, lba);
-            fflush(stdout);
+    for (l = 0; l < numses; l++) {
+        // allocate buffers
+        for (i = 0; i < qsize; i++) {
+            nlb = rand() % maxnlb + 1;
+            buflen[i] = nlb * ses->ns->blocksize;
+            if (!(buf[i] = unvme_alloc(ses->ns, buflen[i])))
+                error(1, 0, "alloc.%d.%d.%d failed", ses->id, ses->qid, i);
         }
 
-        // write-read-verify test
-        for (q = 0; q < qcount; q++) {
-
-            // allocate all pages in a queue and fill each page with a pattern
-            unvme_page_t* pages = unvme_alloc(ns, q, ns->maxppq);
-            if (!pages) ERROR("unvme_alloc.%d q=%d n=%d", tid, q, ns->maxppq);
-            unvme_page_t* p = pages;
-            for (d = 0; d < ns->maxppq; d++) {
-                buf = p->buf;
-                pat = ((p->qid + 1) << 16) | p->id;
-                for (i = 0; i < ns->pagesize; i += sizeof(pat)) {
-                    *buf++ = pat;
-                }
-                p++;
+#ifdef DO_SYNC_WRITE_READ
+        slba = ses->slba;
+        for (i = 0; i < qsize; i++) {
+            nlb = buflen[i] / ses->ns->blocksize;
+            wlen = buflen[i] / sizeof (u64);
+            p = buf[i];
+            for (w = 0; w < wlen; w++) p[w] = (w << 32) + i;
+            if (unvme_write(ses->ns, ses->qid, p, slba, nlb))
+                error(1, 0, "write.%d.%d.%d failed", ses->id, ses->qid, i);
+            bzero(p, buflen[i]);
+            if (unvme_read(ses->ns, ses->qid, p, slba, nlb))
+                error(1, 0, "read.%d.%d.%d failed", ses->id, ses->qid, i);
+            for (w = 0; w < wlen; w++) {
+                if (p[w] != ((w << 32) + i))
+                    error(1, 0, "data.%d.%d.%d error", ses->id, ses->qid, i);
             }
+            slba += nlb;
+        }
+#else
+        // async write
+        slba = ses->slba;
+        for (i = 0; i < qsize; i++) {
+            nlb = buflen[i] / ses->ns->blocksize;
+            wlen = buflen[i] / sizeof (u64);
+            p = buf[i];
+            for (w = 0; w < wlen; w++) p[w] = (w << 32) + i;
+            if (!(iod[i] = unvme_awrite(ses->ns, ses->qid, p, slba, nlb)))
+                error(1, 0, "awrite.%d.%d.%d failed", ses->id, ses->qid, i);
+            slba += nlb;
+        }
 
-            // do async write of various size
-            for (d = 0; d < ns->maxiopq; d++) {
-                p = pages + d * ns->maxppio;
-                n = rand() % (maxbpio + 1);
-                p->nlb = n < minbpio ? minbpio : n;
-                p->slba = lba;
-                if (unvme_awrite(ns, p)) IOERROR("awrite", tid, p);
-                lba -= maxbpio;
+        // async poll to complete all writes
+        for (i = 0; i < qsize; i++) {
+            if (unvme_apoll(iod[i], UNVME_TIMEOUT))
+                error(1, 0, "apoll.%d.%d.%d failed", ses->id, ses->qid, i);
+        }
+
+        // do sync read and compare
+        slba = ses->slba;
+        for (i = 0; i < qsize; i++) {
+            nlb = buflen[i] / ses->ns->blocksize;
+            wlen = buflen[i] / sizeof (u64);
+            p = buf[i];
+            bzero(p, buflen[i]);
+            if (unvme_read(ses->ns, ses->qid, p, slba, nlb))
+                error(1, 0, "read.%d.%d.%d failed", ses->id, ses->qid, i);
+            for (w = 0; w < wlen; w++) {
+                if (p[w] != ((w << 32) + i))
+                    error(1, 0, "data.%d.%d.%d error", ses->id, ses->qid, i);
             }
+            slba += nlb;
+        }
+#endif
 
-            // poll for write completion then clear and read back
-            for (d = 0; d < ns->maxiopq; d++) {
-                if (apoll) {
-                    if (!(p = unvme_apoll(ns, q, UNVME_TIMEOUT))) {
-                        ERROR("t=%d page write completion timeout", tid);
-                    }
-                } else {
-                    p = pages + d * ns->maxppio;
-                    if (!unvme_poll(ns, p, UNVME_TIMEOUT) || p->stat) {
-                        IOERROR("poll write", tid, p);
-                    }
-                }
-                for (i = 0; i < ns->maxppio; i++) {
-                    memset(p[i].buf, 0, ns->pagesize);
-                }
-                if (unvme_aread(ns, p)) IOERROR("aread", tid, p);
-            }
-
-            // poll on read completion and verify data
-            gettimeofday(&t0, 0);
-            memset(cpstats, 0, ns->maxiopq);
-            for (d = 0, cpcount = 0; ; ) {
-                if (cpstats[d]) goto next;
-
-                gettimeofday(&t1, 0);
-                if (apoll) {
-                    if (!(p = unvme_apoll(ns, q, UNVME_TIMEOUT))) {
-                        ERROR("t=%d page read completion timeout", tid);
-                    }
-                } else {
-                    p = pages + d * ns->maxppio;
-                    if (!unvme_poll(ns, p, 0)) {
-                        if ((t1.tv_sec - t0.tv_sec) < UNVME_TIMEOUT) goto next;
-                        IOERROR("poll read timeout", tid, p);
-                    }
-                    if (p->stat) IOERROR("read", tid, p);
-                    cpstats[d] = 1;
-                }
-
-                int nlb = p->nlb;
-                for (n = 0; n < nlb; n += ns->nbpp) {
-                    buf = p->buf;
-                    pat = ((p->qid + 1) << 16) | p->id;
-                    int bc = (nlb - n) * ns->blocksize;
-                    if (bc > ns->pagesize) bc = ns->pagesize;
-                    for (i = 0; i < bc; i += sizeof(pat)) {
-                        if (*buf != pat) {
-                            ERROR("data mismatch t=%d l=%d q=%d pi=%d lba=%#lx buf[%d]=0x%08x",
-                                  tid, l, p->qid, p->id, p->slba, i, *buf);
-                        }
-                        buf++;
-                    }
-                    p++;
-                }
-
-                if (++cpcount == ns->maxiopq) break;
-next:
-                if (++d == ns->maxiopq) d = 0;
-            }
-
-            // free all pages in a queue
-            if (unvme_free(ns, pages)) ERROR("unvme_free %d %d", tid, q);
+        // free buffers
+        for (i = 0; i < qsize; i++) {
+            if (unvme_free(ses->ns, buf[i]))
+                error(1, 0, "free failed");
         }
     }
 
-    free(cpstats);
+    free(buf);
+    free(iod);
+    printf("Test s%d q%d completed (lba %#lx)\n", ses->id, ses->qid, ses->slba);
+
+    return 0;
+}
+
+/**
+ * Thread per session.
+ */
+void* test_session(void* arg)
+{
+    int sesid = (long)arg;
+    int sid = sesid + 1;
+
+    printf("Session %d started\n", sid);
+    const unvme_ns_t* ns = unvme_open(pciname, nsid, qcount, qsize);
+    if (!ns) error(1, 0, "unvme_open %d failed", sid);
+
+    u64 bpq = ns->blockcount / numses / qcount;
+
+    pthread_t* qt = calloc(qcount, sizeof(pthread_t));
+    ses_arg_t* sarg = calloc(qcount, sizeof(ses_arg_t));
+
+    int q;
+    for (q = 0; q < qcount; q++) {
+        sarg[q].ns = ns;
+        sarg[q].id = sid;
+        sarg[q].qid = q;
+        sarg[q].slba = bpq * (sesid * qcount + q);
+        pthread_create(&qt[q], 0, test_queue, &sarg[q]);
+        sem_wait(&sm_ready);
+    }
+    for (q = 0; q < qcount; q++) sem_post(&sm_start);
+    for (q = 0; q < qcount; q++) pthread_join(qt[q], 0);
+
+    free(sarg);
+    free(qt);
     unvme_close(ns);
-    printf("Test thread #%d completed\n", tid);
+    printf("Session %d completed\n", sid);
+
     return 0;
 }
 
@@ -206,42 +205,37 @@ int main(int argc, char* argv[])
     const char* usage =
 "Usage: %s [OPTION]... pciname\n\
          -n       nsid (default to 1)\n\
-         -t       number of thread sessions (default 14)\n\
-         -q       number of IO queues per thread (default 2)\n\
-         -d       each IO queue size (default 64)\n\
-         -m       minimum IO blockcount (default 1)\n\
-         -x       maximum IO blockcount (depends on block size)\n\
-         -l       number of test loop iterations\n\
+         -t       number of sessions (default 4)\n\
+         -q       number of queues per session (default 6)\n\
+         -d       each queue size (default 500)\n\
+         -m       maximum number of blocks per IO (default 2048)\n\
          pciname  PCI device name (as BB:DD.F format)\n";
 
     char* prog = strrchr(argv[0], '/');
     prog = prog ? prog + 1 : argv[0];
 
     int opt, i;
-    while ((opt = getopt(argc, argv, "n:t:q:d:m:x:l:")) != -1) {
+    while ((opt = getopt(argc, argv, "n:t:q:d:m:")) != -1) {
         switch (opt) {
         case 'n':
             nsid = atoi(optarg);
+            if (nsid <= 0) error(1, 0, "n must be > 0");
             break;
         case 't':
             numses = atoi(optarg);
+            if (numses <= 0) error(1, 0, "t must be > 0");
             break;
         case 'q':
             qcount = atoi(optarg);
-            if (qcount < 1) error(1, 0, "qcount must be > 0");
+            if (qcount <= 0) error(1, 0, "q must be > 0");
             break;
         case 'd':
             qsize = atoi(optarg);
-            if (qsize < 2) error(1, 0, "qsize must be > 1");
+            if (qsize <= 1) error(1, 0, "d must be > 1");
             break;
         case 'm':
-            minbpio = atoi(optarg);
-            break;
-        case 'x':
-            maxbpio = atoi(optarg);
-            break;
-        case 'l':
-            loop = atoi(optarg);
+            maxnlb = atoi(optarg);
+            if (maxnlb <= 0) error(1, 0, "m must be > 0");
             break;
         default:
             error(1, 0, usage, prog);
@@ -251,51 +245,28 @@ int main(int argc, char* argv[])
     pciname = argv[optind];
 
     printf("MULTI-SESSION TEST BEGIN\n");
-    printf("threadcount=%d nsid=%d qcount=%d qsize=%d\n",
-           numses, nsid, qcount, qsize);
-
-    // open device to validate maxbpio
     const unvme_ns_t* ns = unvme_open(pciname, nsid, qcount, qsize);
     if (!ns) error(1, 0, "unvme_open failed");
-    if (!strcmp(ns->model, "INT")) {
-        printf("This test is not applicable for model %s\n", ns->model);
-        unvme_close(ns);
-        return 0;
-    }
-    if (!maxbpio) maxbpio = ns->maxbpio;
-    if (((minbpio <= 0)) || (minbpio > maxbpio) || (maxbpio > ns->maxbpio)) {
-        error(1, 0, "invalid IO block range (min=%d max=%d)", minbpio, maxbpio);
-    }
-    printf("pagesize=%d blocksize=%d blockcount=%ld maxppq=%d model=%s\n",
-           ns->pagesize, ns->blocksize, ns->blockcount, ns->maxppq, ns->model);
+    printf("nsid=%d ses=%d qc=%d qd=%d maxnlb=%d cap=%lx\n",
+           nsid, numses, qcount, qsize, maxnlb, ns->blockcount);
+    if ((u64)(numses * qcount * qsize * maxnlb) > ns->blockcount)
+        error(1, 0, "not enough disk space");
     unvme_close(ns);
 
-    sem_init(&sm_open, 0, 0);
-    sem_init(&sm_test, 0, 0);
-    pthread_t* ses = calloc(numses, sizeof(pthread_t));
+    sem_init(&sm_ready, 0, 0);
+    sem_init(&sm_start, 0, 0);
+    srand(time(0));
+    pthread_t* st = calloc(numses * qcount, sizeof(pthread_t));
 
-    // poll test
-    printf("=== Test poll\n");
     for (i = 0; i < numses; i++) {
-        long arg = i;
-        pthread_create(ses + i, 0, test_session, (void*)arg);
-        sem_wait(&sm_open);
+        pthread_create(&st[i], 0, test_session, (void*)(long)i);
     }
-    for (i = 0; i < numses; i++) sem_post(&sm_test);
-    for (i = 0; i < numses; i++) pthread_join(ses[i], 0);
+    for (i = 0; i < numses; i++) pthread_join(st[i], 0);
 
-    // anonymous poll test
-    printf("=== Test apoll\n");
-    for (i = 0; i < numses; i++) {
-        long arg = 0x100000000 + i;
-        pthread_create(ses + i, 0, test_session, (void*)arg);
-        sem_wait(&sm_open);
-    }
-    for (i = 0; i < numses; i++) sem_post(&sm_test);
-    for (i = 0; i < numses; i++) pthread_join(ses[i], 0);
-    free(ses);
+    sem_destroy(&sm_start);
+    sem_destroy(&sm_ready);
+    free(st);
 
     printf("MULTI-SESSION TEST COMPLETE\n");
     return 0;
 }
-

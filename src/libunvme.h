@@ -57,53 +57,41 @@ typedef uint64_t        u64;        ///< 64-bit unsigned
 
 /// Namespace attributes structure
 typedef struct _unvme_ns {
-    int                 id;         ///< namespace id
-    int                 sid;        ///< session id
-    int                 vid;        ///< PCI vendor id
-    char                model[8];   ///< compiled model name
+    u16                 id;         ///< namespace id
+    u16                 vid;        ///< vendor id
+    u32                 sid;        ///< session id
+    u32                 qcount;     ///< number of I/O queues
+    u32                 qsize;      ///< I/O queue size
     char                sn[20];     ///< device serial number
     char                mn[40];     ///< namespace model number
     char                fr[8];      ///< namespace firmware revision
-    int                 maxqsize;   ///< max queue size supported
-    int                 pagesize;   ///< page size
-    int                 blocksize;  ///< logical block size
+    u32                 pagesize;   ///< page size
+    u32                 blocksize;  ///< logical block size
     u64                 blockcount; ///< total number of logical blocks
-    int                 nbpp;       ///< number of blocks per page
-    int                 maxppio;    ///< max numer of pages per I/O
-    int                 maxbpio;    ///< max number of blocks per I/O
-    int                 maxppq;     ///< max number of pages per queue
-    int                 maxiopq;    ///< max concurrent I/O per queue
+    u32                 nbpp;       ///< number of blocks per page
+    u32                 maxppio;    ///< max number of pages per I/O
+    u32                 maxbpio;    ///< max number of blocks per I/O
+    u16                 maxiopq;    ///< max concurrent I/O per queue
+    u16                 maxqsize;   ///< max queue size supported
     void*               ses;        ///< associated session
 } unvme_ns_t;
 
-/// Memory allocated page structure.
-typedef struct _unvme_page {
-    void*               buf;        ///< data buffer
-    u64                 slba;       ///< starting logical block address
-    u16                 nlb;        ///< number of logical blocks
-    u16                 offset;     ///< first buffer offset
-    int                 stat;       ///< I/O status (0 = completed)
-    u16                 id;         ///< page id
-    u16                 qid;        ///< session queue id
-    void*               data;       ///< application private data
-} unvme_page_t;
-
+/// I/O descriptor
+typedef void*           unvme_iod_t;
 
 // Export functions
 const unvme_ns_t* unvme_open(const char* pciname, int nsid, int qcount, int qsize);
 int unvme_close(const unvme_ns_t* ns);
 
-unvme_page_t* unvme_alloc(const unvme_ns_t* ns, int qid, int numpages);
-int unvme_free(const unvme_ns_t* ns, unvme_page_t* pa);
+void* unvme_alloc(const unvme_ns_t* ns, u64 size);
+int unvme_free(const unvme_ns_t* ns, void* buf);
 
-int unvme_read(const unvme_ns_t* ns, unvme_page_t* pa);
-int unvme_write(const unvme_ns_t* ns, unvme_page_t* pa);
-int unvme_aread(const unvme_ns_t* ns, unvme_page_t* pa);
-int unvme_awrite(const unvme_ns_t* ns, unvme_page_t* pa);
+int unvme_write(const unvme_ns_t* ns, int qid, void* buf, u64 slba, u32 nlb);
+int unvme_read(const unvme_ns_t* ns, int qid, void* buf, u64 slba, u32 nlb);
 
-unvme_page_t* unvme_poll(const unvme_ns_t* ns, unvme_page_t* pa, int sec);
-unvme_page_t* unvme_apoll(const unvme_ns_t* ns, int qid, int sec);
-
+unvme_iod_t unvme_awrite(const unvme_ns_t* ns, int qid, void* buf, u64 slba, u32 nlb);
+unvme_iod_t unvme_aread(const unvme_ns_t* ns, int qid, void* buf, u64 slba, u32 nlb);
+int unvme_apoll(unvme_iod_t iod, int timeout);
 
 #endif // _LIBUNVME_H
 

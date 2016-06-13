@@ -404,6 +404,7 @@ typedef struct _nvme_queue {
     nvme_cq_entry_t*        cq;         ///< completion queue
     u32*                    sq_doorbell; ///< submission queue doorbell
     u32*                    cq_doorbell; ///< completion queue doorbell
+    int                     sq_head;    ///< submission queue head
     int                     sq_tail;    ///< submission queue tail
     int                     cq_head;    ///< completion queue head
     int                     cq_phase;   ///< completion queue phase bit
@@ -427,22 +428,23 @@ nvme_queue_t* nvme_setup_adminq(nvme_device_t* dev, int qsize,
                                 void* sqbuf, u64 sqpa, void* cqbuf, u64 cqpa);
 
 nvme_queue_t* nvme_create_ioq(nvme_device_t* dev, int id, int qsize,
-                              void* sqbuf, u64 sqpa, void* cqbuf, u64 cqpa, int ien);
+                              void* sqbuf, u64 sqpa, void* cqbuf, u64 cqpa);
 int nvme_delete_ioq(nvme_queue_t* ioq);
 
 int nvme_acmd_identify(nvme_device_t* dev, int nsid, u64 prp1, u64 prp2);
 int nvme_acmd_get_log_page(nvme_device_t* dev, int nsid,
                           int lid, int numd, u64 prp1, u64 prp2);
-int nvme_acmd_create_cq(nvme_queue_t* ioq, u64 prp, int ien);
+int nvme_acmd_create_cq(nvme_queue_t* ioq, u64 prp);
 int nvme_acmd_create_sq(nvme_queue_t* ioq, u64 prp);
 int nvme_acmd_delete_cq(nvme_queue_t* ioq);
 int nvme_acmd_delete_sq(nvme_queue_t* ioq);
 
-int nvme_cmd_rw(int opc, nvme_queue_t* ioq, int nsid, int cid, u64 lba, int nb, u64 prp1, u64 prp2);
-int nvme_cmd_read(nvme_queue_t* ioq, int nsid, int cid, u64 lba, int nb, u64 prp1, u64 prp2);
-int nvme_cmd_write(nvme_queue_t* ioq, int nsid, int cid, u64 lba, int nb, u64 prp1, u64 prp2);
+int nvme_cmd_rw(nvme_queue_t* ioq, int opc, u16 cid, int nsid, u64 slba, int nlb, u64 prp1, u64 prp2);
+int nvme_cmd_read(nvme_queue_t* ioq, u16 cid, int nsid, u64 slba, int nlb, u64 prp1, u64 prp2);
+int nvme_cmd_write(nvme_queue_t* ioq, u16 cid, int nsid, u64 slba, int nlb, u64 prp1, u64 prp2);
 
 int nvme_check_completion(nvme_queue_t* q, int* stat);
 int nvme_wait_completion(nvme_queue_t* q, int cid, int timeout);
 
 #endif  // _UNVME_NVME_H
+

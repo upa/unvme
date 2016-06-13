@@ -35,14 +35,18 @@
  */
 
 #include <stddef.h>
+#include <sched.h>
 #include "unvme.h"
 
+/// Global lock for open/close/alloc/free
+static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
-/// Global client info
-unvme_client_t  client = {  .lock = PTHREAD_MUTEX_INITIALIZER,
-                            .csif = { 0 },
-                            .ses = NULL
-                         };
+unvme_session_t* unvme_do_open(int vfid, int nsid, int qcount, int qsize);
+int unvme_do_close(int sid);
+void* unvme_do_alloc(unvme_session_t* ses, u64 size);
+int unvme_do_free(unvme_session_t* ses, void* buf);
+unvme_desc_t* unvme_do_submit(unvme_queue_t* ioq, int opc, void* buf, u64 slba, u32 nlb);
+int unvme_do_poll(unvme_desc_t* iod, int sec);
 
 
 /**
@@ -55,22 +59,21 @@ unvme_client_t  client = {  .lock = PTHREAD_MUTEX_INITIALIZER,
  */
 const unvme_ns_t* unvme_open(const char* pciname, int nsid, int qcount, int qsize)
 {
-    int b, d, f;
-    if (sscanf(pciname, "%02x:%02x.%1x", &b, &d, &f) != 3) {
-        ERROR("invalid PCI device %s (expect BB:DD.F format)", pciname);
-        return NULL;
-    }
     if (qcount < 1 || qsize < 2) {
         ERROR("qcount must be > 0 and qsize must be > 1");
         return NULL;
     }
 
+    int b, d, f;
+    if (sscanf(pciname, "%02x:%02x.%x", &b, &d, &f) != 3) {
+        ERROR("invalid PCI device %s (expect BB:DD.F format)", pciname);
+        return NULL;
+    }
     int pci = (b << 16) + (d << 8) + f;
 
-    pthread_mutex_lock(&client.lock);
-    unvme_session_t* ses = client_open(pci, nsid, qcount, qsize);
-    if (ses && !client.ses) client.ses = ses;
-    pthread_mutex_unlock(&client.lock);
+    pthread_mutex_lock(&lock);
+    unvme_session_t* ses = unvme_do_open(pci, nsid, qcount, qsize);
+    pthread_mutex_unlock(&lock);
     return ses ? &ses->ns : NULL;
 }
 
@@ -82,132 +85,108 @@ const unvme_ns_t* unvme_open(const char* pciname, int nsid, int qcount, int qsiz
 int unvme_close(const unvme_ns_t* ns)
 {
     unvme_session_t* ses = (unvme_session_t*)ns->ses;
-
-    pthread_mutex_lock(&client.lock);
-    // free all the allocated pages in the session
-    int i;
-    for (i = 0; i < ses->qcount; i++) {
-        while (ses->queues[i].pal) unvme_free(ns, ses->queues[i].pal->pa);
-    }
-    client_close(ns);
-    pthread_mutex_unlock(&client.lock);
+    pthread_mutex_lock(&lock);
+    unvme_do_close(ses->id);
+    pthread_mutex_unlock(&lock);
     return 0;
 }
 
 /**
- * Allocate an array of pages from a given client queue.
+ * Allocate an I/O buffer associated with a session.
  * @param   ns          namespace handle
- * @param   qid         client queue id
- * @param   numpages    number of pages
- * @return  an array of allocated pages or NULL if failure.
+ * @param   size        buffer size
+ * @return  the allocated buffer or NULL if failure.
  */
-unvme_page_t* unvme_alloc(const unvme_ns_t* ns, int qid, int numpages)
+void* unvme_alloc(const unvme_ns_t* ns, u64 size)
+{
+    unvme_session_t* ses = (unvme_session_t*)ns->ses;
+    return unvme_do_alloc(ses, size);
+}
+
+/**
+ * Free an I/O buffer associated with a session.
+ * @param   ns          namespace handle
+ * @param   buf         buffer pointer
+ * @return  0 if ok else -1.
+ */
+int unvme_free(const unvme_ns_t* ns, void* buf)
+{
+    unvme_session_t* ses = (unvme_session_t*)ns->ses;
+    return unvme_do_free(ses, buf);
+}
+
+/**
+ * Poll for completion status of a previous IO submission.
+ * If there's no error, the descriptor will be released.
+ * @param   iod         IO descriptor
+ * @param   timeout     in seconds
+ * @return  0 if ok else error status.
+ */
+int unvme_apoll(unvme_iod_t iod, int timeout)
+{
+    return unvme_do_poll(iod, timeout);
+}
+
+/**
+ * Read data from specified logical blocks on device.
+ * @param   ns          namespace handle
+ * @param   qid         client queue index
+ * @param   buf         data buffer (from unvme_alloc)
+ * @param   slba        starting logical block
+ * @param   nlb         number of logical blocks
+ * @return  I/O descriptor or NULL if failed.
+ */
+unvme_iod_t unvme_aread(const unvme_ns_t* ns, int qid, void* buf, u64 slba, u32 nlb)
 {
     unvme_queue_t* ioq = ((unvme_session_t*)(ns->ses))->queues + qid;
-
-    if (numpages == 0) return NULL;
-    if ((ioq->pac + numpages) > ns->maxppq) {
-        ERROR("%d will exceed queue limit of %d pages", numpages, ns->maxppq);
-        return NULL;
-    }
-
-    // allocate the page array
-    unvme_pal_t* pal = zalloc(sizeof(unvme_pal_t) +
-                               numpages * sizeof(unvme_page_t));
-    pal->count = numpages;
-    pal->pa->qid = qid;
-
-    if (client_alloc(ns, pal)) {
-        free(pal);
-        return NULL;
-    }
-
-    // add to the page allocation track list
-    if (!ioq->pal) {
-        ioq->pal = pal;
-        pal->prev = pal->next = pal;
-    } else {
-        pal->prev = ioq->pal->prev;
-        pal->next = ioq->pal;
-        ioq->pal->prev->next = pal;
-        ioq->pal->prev = pal;
-    }
-
-    ioq->pac += pal->count;
-    return pal->pa;
+    return unvme_do_submit(ioq, NVME_CMD_READ, buf, slba, nlb);
 }
 
 /**
- * Free a page array that was allocated.
+ * Write data to specified logical blocks on device.
  * @param   ns          namespace handle
- * @param   pa          page array pointer
- * @return  0 if ok else error code.
+ * @param   qid         client queue index
+ * @param   buf         data buffer (from unvme_alloc)
+ * @param   slba        starting logical block
+ * @param   nlb         number of logical blocks
+ * @return  I/O descriptor or NULL if failed.
  */
-int unvme_free(const unvme_ns_t* ns, unvme_page_t* pa)
+unvme_iod_t unvme_awrite(const unvme_ns_t* ns, int qid, void* buf, u64 slba, u32 nlb)
 {
-    unvme_queue_t* ioq = ((unvme_session_t*)(ns->ses))->queues + pa->qid;
-    unvme_pal_t* pal = (unvme_pal_t*)((void*)pa - offsetof(unvme_pal_t, pa));
-    if (!ioq->pal || pal->pa != pa || client_free(ns, pal)) return -1;
-
-    // remove from the page allocation entry
-    if (pal->next == pal) {
-        ioq->pal = NULL;
-    } else {
-        pal->next->prev = pal->prev;
-        pal->prev->next = pal->next;
-        if (ioq->pal == pal) ioq->pal = pal->next;
-    }
-    ioq->pac -= pal->count;
-
-    free(pal);
-    return 0;
+    unvme_queue_t* ioq = ((unvme_session_t*)(ns->ses))->queues + qid;
+    return unvme_do_submit(ioq, NVME_CMD_WRITE, buf, slba, nlb);
 }
 
 /**
- * Read a page array and then poll to wait for completion.
+ * Read data from specified logical blocks on device.
  * @param   ns          namespace handle
- * @param   pa          page array
- * @return  0 if ok else error code.
+ * @param   qid         client queue index
+ * @param   buf         data buffer (from unvme_alloc)
+ * @param   slba        starting logical block
+ * @param   nlb         number of logical blocks
+ * @return  0 if ok else error status.
  */
-int unvme_read(const unvme_ns_t* ns, unvme_page_t* pa)
+int unvme_read(const unvme_ns_t* ns, int qid, void* buf, u64 slba, u32 nlb)
 {
-    if (!client_rw(ns, pa, NVME_CMD_READ) &&
-         unvme_poll(ns, pa, UNVME_TIMEOUT)) return 0;
+    unvme_queue_t* ioq = ((unvme_session_t*)(ns->ses))->queues + qid;
+    unvme_desc_t* desc = unvme_do_submit(ioq, NVME_CMD_READ, buf, slba, nlb);
+    if (desc) return unvme_do_poll(desc, UNVME_TIMEOUT);
     return -1;
 }
 
 /**
- * Write a page array and then poll to wait for completion.
+ * Write data to specified logical blocks on device.
  * @param   ns          namespace handle
- * @param   pa          page array
- * @return  0 if ok else error code.
+ * @param   qid         client queue index
+ * @param   buf         data buffer (from unvme_alloc)
+ * @param   slba        starting logical block
+ * @param   nlb         number of logical blocks
+ * @return  0 if ok else error status.
  */
-int unvme_write(const unvme_ns_t* ns, unvme_page_t* pa)
+int unvme_write(const unvme_ns_t* ns, int qid, void* buf, u64 slba, u32 nlb)
 {
-    if (!client_rw(ns, pa, NVME_CMD_WRITE) &&
-         unvme_poll(ns, pa, UNVME_TIMEOUT)) return 0;
+    unvme_queue_t* ioq = ((unvme_session_t*)(ns->ses))->queues + qid;
+    unvme_desc_t* desc = unvme_do_submit(ioq, NVME_CMD_WRITE, buf, slba, nlb);
+    if (desc) return unvme_do_poll(desc, UNVME_TIMEOUT);
     return -1;
 }
-
-/**
- * Read a page array asynchronously (caller is to poll for completion).
- * @param   ns          namespace handle
- * @param   pa          page array
- * @return  0 if ok else error code.
- */
-int unvme_aread(const unvme_ns_t* ns, unvme_page_t* pa)
-{
-    return client_rw(ns, pa, NVME_CMD_READ);
-}
-
-/**
- * Write a page array asynchronously (caller is to poll for completion).
- * @param   ns          namespace handle
- * @param   pa          page array
- * @return  0 if ok else error code.
- */
-int unvme_awrite(const unvme_ns_t* ns, unvme_page_t* pa)
-{
-    return client_rw(ns, pa, NVME_CMD_WRITE);
-}
-

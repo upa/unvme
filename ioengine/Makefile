@@ -31,45 +31,28 @@
 
 include ../Makefile.def
 
-ifneq ($(wildcard $(FIO_DIR)/fio.h),)
-	TARGETS = unvme_fio
-ifneq ($(wildcard $(SPDK_ROOT_DIR)/Makefile),)
-	TARGETS += spdk_fio
-endif
-endif
-
-SPDK_CPPFLAGS = -I$(SPDK_ROOT_DIR)/include -I$(CONFIG_DPDK_DIR)/include
-SPDK_LIBS = -L$(CONFIG_DPDK_DIR)/lib \
-	    	$(SPDK_ROOT_DIR)/lib/nvme/libspdk_nvme.a \
-		$(SPDK_ROOT_DIR)/lib/util/libspdk_util.a \
-		$(SPDK_ROOT_DIR)/lib/memory/libspdk_memory.a \
-		-lrte_eal -lrte_malloc -lrte_mempool -lrte_ring -ldl \
-		-lpciaccess -lpthread -lrt
+TARGETS = unvme_fio
 
 UNVME_SRC = ../src
-UNVME_CPPFLAGS = -I$(UNVME_SRC)
-UNVME_LIBS = $(UNVME_SRC)/libunvme.a -lpthread -lrt
+
+COPT ?= -O3
+CPPFLAGS += -D_GNU_SOURCE -I$(UNVME_SRC) -I$(FIO_DIR)
+CFLAGS += $(COPT) -Wall -fPIC
+LDFLAGS += -shared -rdynamic
+LDLIBS += $(UNVME_SRC)/libunvme.a -lpthread -lrt
 
 OBJS = $(addsuffix .o, $(TARGETS))
 
-CPPFLAGS += -D_GNU_SOURCE -I$(FIO_DIR)
-CFLAGS += $(COPT) -Wall -fPIC
-LDFLAGS += -shared -rdynamic
+all: $(TARGETS)
 
-all: $(OBJS) $(TARGETS)
-
-unvme_fio: $(UNVME_SRC)/libunvme.a
-unvme_fio.o: CPPFLAGS += $(UNVME_CPPFLAGS)
-unvme_fio: LDLIBS = $(UNVME_LIBS)
-
-spdk_fio.o: CPPFLAGS += $(SPDK_CPPFLAGS)
-spdk_fio: LDLIBS = $(SPDK_LIBS)
+$(TARGETS): $(UNVME_SRC)/libunvme.a
 
 lint: COPT = -D_FORTIFY_SOURCE=2 -DUNVME_DEBUG -O2
 lint: clean $(OBJS)
 	@$(RM) *.o
 
 clean:
-	$(RM) unvme_fio spdk_fio *.o
+	$(RM) unvme_fio *.o
 
 .PHONY: all lint clean
+

@@ -38,7 +38,6 @@
 #include <pthread.h>
 
 #include "unvme_log.h"
-#include "unvme_shm.h"
 
 
 // Static global variables
@@ -95,8 +94,8 @@ void log_msg(int err, const char* fmt, ...)
 {
     va_list args;
 
+    pthread_spin_lock(&log_lock);
     if (log_fp) {
-        pthread_spin_lock(&log_lock);
         va_start(args, fmt);
         if (err) {
             char s[256];
@@ -109,7 +108,6 @@ void log_msg(int err, const char* fmt, ...)
             fflush(log_fp);
         }
         va_end(args);
-        pthread_spin_unlock(&log_lock);
     } else {
         va_start(args, fmt);
         if (err) {
@@ -120,5 +118,6 @@ void log_msg(int err, const char* fmt, ...)
         }
         va_end(args);
     }
+    pthread_spin_unlock(&log_lock);
 }
 

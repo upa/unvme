@@ -31,43 +31,21 @@
 
 include ../Makefile.def
 
-TARGET_SVC := unvme
 TARGET_LIB := libunvme.a
 
 CFLAGS += $(COPT) -Wall -fPIC
 LDLIBS += -pthread -lrt
 
-INCLUDES := unvme.h libunvme.h \
-           unvme_nvme.h unvme_vfio.h unvme_shm.h unvme_log.h rdtsc.h
-
-COMMON_SRCS := unvme_nvme.c unvme_vfio.c unvme_shm.c unvme_log.c
-
+INCS := $(wildcard *.h)
 SRCS := $(wildcard *.c)
 OBJS := $(SRCS:.c=.o)
 
-ifneq ($(wildcard .model),)
-	LAST_MODEL := $(shell cat .model)
-	MAKE_MODEL := $(LAST_MODEL)
-else
-	MAKE_MODEL := $(DEFAULT_MODEL)
-	LAST_MODEL := $(MAKE_MODEL)
-endif
+all: $(TARGET_LIB)
 
-all: $(MAKE_MODEL)
+$(OBJS): $(INCS)
 
-model:
-	@if [ "$(LAST_MODEL)" != "$(MAKE_MODEL)" ]; then	\
-		$(RM) *.o $(TARGET_LIB);			\
-		echo -n $(MAKE_MODEL) > .model;			\
-	fi
-	@echo "Making $(MAKE_MODEL)"
-
-model_apc: MAKE_MODEL := model_apc
-model_tpc: MAKE_MODEL := model_tpc
-model_cs:  MAKE_MODEL := model_cs
-
-model_apc model_tpc model_cs: model
-	$(MAKE) -f Makefile.$(MAKE_MODEL)
+$(TARGET_LIB): $(OBJS)
+	$(AR) crs $@ $(OBJS)
 
 %.i: %.c
 	$(CPP) $(CPPFLAGS) -o $@ $<
@@ -77,9 +55,10 @@ lint: clean $(OBJS)
 	@$(RM) *.o
 
 clean:
-	$(RM) $(TARGET_SVC) $(TARGET_LIB) .model *.o *.i /dev/shm/unvme*
+	$(RM) $(TARGET_LIB) *.o *.i
+	@if [ "$(HOME)" = "/root" ]; then $(RM) /dev/shm/unvme*; fi
 
-.PHONY: all model_apc model_tpc model_cs lint clean
+.PHONY: all lint clean
 
 .EXPORT_ALL_VARIABLES:
 

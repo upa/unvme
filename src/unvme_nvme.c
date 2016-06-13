@@ -160,18 +160,26 @@ static int nvme_ctlr_enable(nvme_device_t* dev, nvme_controller_config_t cc)
 /**
  * Submit an entry at submission queue tail.
  * @param   q           queue
+ * @return  0 if ok else -1.
  */
-static void nvme_submit_cmd(nvme_queue_t* q)
+static int nvme_submit_cmd(nvme_queue_t* q)
 {
-    //HEX_DUMP(&q->sq[q->sq_tail], sizeof(nvme_sq_entry_t));
-    if (++q->sq_tail == q->size) q->sq_tail = 0;
-    w32(q->dev, q->sq_doorbell, q->sq_tail);
+    int tail = q->sq_tail;
+    HEX_DUMP(&q->sq[tail], sizeof(nvme_sq_entry_t));
+    if (++tail == q->size) tail = 0;
+    if (tail == q->sq_head) {
+        ERROR("sq full at %d", tail);
+        return -1;
+    }
+    q->sq_tail = tail;
+    w32(q->dev, q->sq_doorbell, tail);
+    return 0;
 }
 
 /**
  * Check a completion queue and return the completed command id and status.
  * @param   q           queue
- * @param   stat        completion status reference
+ * @param   stat        completion status returned
  * @return  the completed command id or -1 if there's no completion.
  */
 int nvme_check_completion(nvme_queue_t* q, int* stat)
@@ -179,6 +187,7 @@ int nvme_check_completion(nvme_queue_t* q, int* stat)
     nvme_cq_entry_t* cqe = &q->cq[q->cq_head];
     if (cqe->p == q->cq_phase) return -1;
 
+    q->sq_head = cqe->sqhd;
     *stat = cqe->psf & 0xfe;
     if (++q->cq_head == q->size) {
         q->cq_head = 0;
@@ -199,7 +208,7 @@ int nvme_check_completion(nvme_queue_t* q, int* stat)
  * Wait for a given command completion until timeout.
  * @param   q           queue
  * @param   cid         cid
- * @param   timeout in seconds
+ * @param   timeout     timeout in seconds
  * @return  completion status (0 if ok).
  */
 int nvme_wait_completion(nvme_queue_t* q, int cid, int timeout)
@@ -212,7 +221,7 @@ int nvme_wait_completion(nvme_queue_t* q, int cid, int timeout)
         if (ret >= 0) {
             if (ret == cid && stat == 0) return 0;
             if (ret != cid) {
-                ERROR("cid wait=%#x recv=%#xd", cid, ret);
+                ERROR("cid wait=%#x recv=%#x", cid, ret);
                 stat = -1;
             } else ERROR("status %#x", stat);
             return stat;
@@ -249,8 +258,9 @@ int nvme_acmd_identify(nvme_device_t* dev, int nsid, u64 prp1, u64 prp2)
     cmd->cns = nsid == 0 ? 1 : 0;
 
     DEBUG_FN("cid=%#x nsid=%d", cid, nsid);
-    nvme_submit_cmd(adminq);
-    return nvme_wait_completion(adminq, cid, 30);
+    int err = nvme_submit_cmd(adminq);
+    if (!err) err = nvme_wait_completion(adminq, cid, 30);
+    return err;
 }
 
 /**
@@ -281,8 +291,9 @@ int nvme_acmd_get_log_page(nvme_device_t* dev, int nsid,
     cmd->numd = numd;
 
     DEBUG_FN("cid=%#x lid=%d", cid, lid);
-    nvme_submit_cmd(adminq);
-    return nvme_wait_completion(adminq, cid, 30);
+    int err = nvme_submit_cmd(adminq);
+    if (!err) err = nvme_wait_completion(adminq, cid, 30);
+    return err;
 }
 
 /**
@@ -290,10 +301,9 @@ int nvme_acmd_get_log_page(nvme_device_t* dev, int nsid,
  * Submit the command and wait for completion.
  * @param   ioq         io queue
  * @param   prp         PRP1 address
- * @param   ien         interrups enabled
  * @return  0 if ok, else -1.
  */
-int nvme_acmd_create_cq(nvme_queue_t* ioq, u64 prp, int ien)
+int nvme_acmd_create_cq(nvme_queue_t* ioq, u64 prp)
 {
     nvme_queue_t* adminq = &ioq->dev->adminq;
     int cid = adminq->sq_tail;
@@ -306,12 +316,12 @@ int nvme_acmd_create_cq(nvme_queue_t* ioq, u64 prp, int ien)
     cmd->pc = 1;
     cmd->qid = ioq->id;
     cmd->qsize = ioq->size - 1;
-    cmd->ien = ien;
     cmd->iv = ioq->id;
 
-    DEBUG_FN("q=%d cid=%#x qs=%d ien=%d", ioq->id, cid, ioq->size, ien);
-    nvme_submit_cmd(adminq);
-    return nvme_wait_completion(adminq, cid, 30);
+    DEBUG_FN("q=%d cid=%#x qs=%d", ioq->id, cid, ioq->size);
+    int err = nvme_submit_cmd(adminq);
+    if (!err) err = nvme_wait_completion(adminq, cid, 30);
+    return err;
 }
 
 /**
@@ -338,8 +348,9 @@ int nvme_acmd_create_sq(nvme_queue_t* ioq, u64 prp)
     cmd->qsize = ioq->size - 1;
 
     DEBUG_FN("q=%d cid=%#x qs=%d", ioq->id, cid, ioq->size);
-    nvme_submit_cmd(adminq);
-    return nvme_wait_completion(adminq, cid, 30);
+    int err = nvme_submit_cmd(adminq);
+    if (!err) err = nvme_wait_completion(adminq, cid, 30);
+    return err;
 }
 
 /**
@@ -362,8 +373,9 @@ static int nvme_acmd_delete_ioq(nvme_queue_t* ioq, int opc)
 
     DEBUG_FN("%cq=%d cid=%#x",
              opc == NVME_ACMD_DELETE_CQ ? 'c' : 's', ioq->id, cid);
-    nvme_submit_cmd(adminq);
-    return nvme_wait_completion(adminq, cid, 30);
+    int err = nvme_submit_cmd(adminq);
+    if (!err) err = nvme_wait_completion(adminq, cid, 30);
+    return err;
 }
 
 /**
@@ -390,18 +402,18 @@ int nvme_acmd_delete_cq(nvme_queue_t* ioq)
 
 /**
  * NVMe submit a read write command.
- * @param   opc         op code
  * @param   ioq         io queue
- * @param   nsid        namespace
+ * @param   opc         op code
  * @param   cid         command id
- * @param   lba         startling logical block address
- * @param   nb          number of blocks
+ * @param   nsid        namespace
+ * @param   slba        startling logical block address
+ * @param   nlb         number of logical blocks
  * @param   prp1        PRP1 address
  * @param   prp2        PRP2 address
  * @return  0 if ok else -1.
  */
-inline int nvme_cmd_rw(int opc, nvme_queue_t* ioq, int nsid,
-                       int cid, u64 lba, int nb, u64 prp1, u64 prp2)
+int nvme_cmd_rw(nvme_queue_t* ioq, int opc, u16 cid, int nsid,
+                       u64 slba, int nlb, u64 prp1, u64 prp2)
 {
     nvme_command_rw_t* cmd = &ioq->sq[ioq->sq_tail].rw;
 
@@ -411,46 +423,45 @@ inline int nvme_cmd_rw(int opc, nvme_queue_t* ioq, int nsid,
     cmd->common.nsid = nsid;
     cmd->common.prp1 = prp1;
     cmd->common.prp2 = prp2;
-    cmd->slba = lba;
-    cmd->nlb = nb - 1;
-    DEBUG_FN("q=%d sqt=%d cid=%#x nsid=%d lba=%#lx nb=%d (%c)", ioq->id,
-             ioq->sq_tail, cid, nsid, lba, nb, opc == NVME_CMD_READ? 'R' : 'W');
-    nvme_submit_cmd(ioq);
-    return 0;
+    cmd->slba = slba;
+    cmd->nlb = nlb - 1;
+    DEBUG_FN("q=%d t=%d cid=%#x nsid=%d lba=%#lx nb=%d (%c)", ioq->id,
+             ioq->sq_tail, cid, nsid, slba, nlb, opc == NVME_CMD_READ? 'R' : 'W');
+    return nvme_submit_cmd(ioq);
 }
 
 /**
  * NVMe submit a read command.
  * @param   ioq         io queue
- * @param   nsid        namespace
  * @param   cid         command id
- * @param   lba         startling logical block address
- * @param   nb          number of blocks
+ * @param   nsid        namespace
+ * @param   slba        startling logical block address
+ * @param   nlb         number of logical blocks
  * @param   prp1        PRP1 address
  * @param   prp2        PRP2 address
  * @return  0 if ok else -1.
  */
-int nvme_cmd_read(nvme_queue_t* ioq, int nsid,
-                  int cid, u64 lba, int nb, u64 prp1, u64 prp2)
+int nvme_cmd_read(nvme_queue_t* ioq, u16 cid, int nsid,
+                  u64 slba, int nlb, u64 prp1, u64 prp2)
 {
-    return nvme_cmd_rw(NVME_CMD_READ, ioq, nsid, cid, lba, nb, prp1, prp2);
+    return nvme_cmd_rw(ioq, NVME_CMD_READ, cid, nsid, slba, nlb, prp1, prp2);
 }
 
 /**
  * NVMe submit a write command.
  * @param   ioq         io queue
- * @param   nsid        namespace
  * @param   cid         command id
- * @param   lba         startling logical block address
- * @param   nb          number of blocks
+ * @param   nsid        namespace
+ * @param   slba        startling logical block address
+ * @param   nlb         number of blocks
  * @param   prp1        PRP1 address
  * @param   prp2        PRP2 address
  * @return  0 if ok else -1.
  */
-int nvme_cmd_write(nvme_queue_t* ioq, int nsid,
-               int cid, u64 lba, int nb, u64 prp1, u64 prp2)
+int nvme_cmd_write(nvme_queue_t* ioq, u16 cid, int nsid,
+                   u64 slba, int nlb, u64 prp1, u64 prp2)
 {
-    return nvme_cmd_rw(NVME_CMD_WRITE, ioq, nsid, cid, lba, nb, prp1, prp2);
+    return nvme_cmd_rw(ioq, NVME_CMD_WRITE, cid, nsid, slba, nlb, prp1, prp2);
 }
 
 /**
@@ -462,11 +473,10 @@ int nvme_cmd_write(nvme_queue_t* ioq, int nsid,
  * @param   sqpa        submission queue IO physical address
  * @param   cqbuf       completion queue buffer
  * @param   cqpa        admin completion IO physical address
- * @param   ien         interrupts enabled
  * @return  pointer to the created io queue or NULL if failure.
  */
 nvme_queue_t* nvme_create_ioq(nvme_device_t* dev, int id, int qsize,
-                          void* sqbuf, u64 sqpa, void* cqbuf, u64 cqpa, int ien)
+                          void* sqbuf, u64 sqpa, void* cqbuf, u64 cqpa)
 {
     nvme_queue_t* ioq = zalloc(sizeof(*ioq));
     ioq->dev = dev;
@@ -477,7 +487,7 @@ nvme_queue_t* nvme_create_ioq(nvme_device_t* dev, int id, int qsize,
     ioq->sq_doorbell = dev->reg->sq0tdbl + (2 * id * dev->dbstride);
     ioq->cq_doorbell = ioq->sq_doorbell + dev->dbstride;
 
-    if (nvme_acmd_create_cq(ioq, cqpa, ien) || nvme_acmd_create_sq(ioq, sqpa)) {
+    if (nvme_acmd_create_cq(ioq, cqpa) || nvme_acmd_create_sq(ioq, sqpa)) {
         free(ioq);
         return NULL;
     }

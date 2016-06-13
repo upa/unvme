@@ -133,6 +133,7 @@ for rw in ${RW}; do
             fi
 
             echo "========"
+            cmd /bin/uname -a | tee -a ${OUTFILE}
             cmd cat ${FIOFILE} | tee -a ${OUTFILE}
             echo -e "\n========\n" >> ${OUTFILE}
             cmd /usr/bin/free -h | tee -a ${OUTFILE}

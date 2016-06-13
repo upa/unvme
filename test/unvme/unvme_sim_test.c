@@ -38,7 +38,9 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <ctype.h>
 #include <error.h>
+#include <time.h>
 
 #include "libunvme.h"
 
@@ -48,56 +50,76 @@ int main(int argc, char** argv)
     const char* usage =
     "Usage: %s [OPTION]... pciname\n\
              -n       nsid (default 1)\n\
-             -q       number of IO queues to create (default 4)\n\
-             -d       IO queue size (default 32)\n\
+             -q       queue count (default 4)\n\
+             -d       queue depth (default 8)\n\
+             -s       data size (default 100M)\n\
              pciname  PCI device name (as BB:DD.F format)\n";
 
-    int opt, nsid = 1, qcount = 8, qsize = 32;
+    int opt, nsid = 1, qcount = 4, qsize = 8;
+    u64 datasize = 100 * 1024 * 1024;
     const char* prog = strrchr(argv[0], '/');
     prog = prog ? prog + 1 : argv[0];
 
-    while ((opt = getopt(argc, argv, "n:q:d:")) != -1) {
+    while ((opt = getopt(argc, argv, "n:q:d:s:")) != -1) {
         switch (opt) {
         case 'n':
             nsid = atoi(optarg);
+            if (nsid <= 0) error(1, 0, "n must be > 0");
             break;
         case 'q':
             qcount = atoi(optarg);
+            if (qsize <= 0) error(1, 0, "q must be > 0");
             break;
         case 'd':
             qsize = atoi(optarg);
-            if (qsize < 2) error(1, 0, "qsize must be > 1");
+            if (qsize <= 1) error(1, 0, "d must be > 1");
+            break;
+        case 's':
+            datasize = atol(optarg);
+            int l = strlen(optarg) - 1;
+            if (tolower(optarg[l]) == 'k') datasize *= 1024;
+            else if (tolower(optarg[l]) == 'm') datasize *= 1024 * 1024;
+            else if (tolower(optarg[l]) == 'g') datasize *= 1024 * 1024 * 1024;
             break;
         default:
             error(1, 0, usage, prog);
         }
     }
     if (optind >= argc) error(1, 0, usage, prog);
-
     char* pciname = argv[optind];
-    const unvme_ns_t* ns = unvme_open(pciname, nsid, qcount, qsize);
-    if (!ns) error(1, 0, "unvme_open %s failed", argv[0]);
-
-    int len = ns->pagesize / sizeof(u64);
-    int q, b;
 
     printf("SIMPLE WRITE-READ-VERIFY TEST BEGIN\n");
+    const unvme_ns_t* ns = unvme_open(pciname, nsid, qcount, qsize);
+    if (!ns) error(1, 0, "unvme_open %s failed", argv[0]);
+    printf("nsid=%d qc=%d qd=%d ds=%ld cap=%ld mbio=%d\n",
+            nsid, qcount, qsize, datasize, ns->blockcount, ns->maxbpio);
+
+    void* buf = unvme_alloc(ns, datasize);
+    if (!buf) error(1, 0, "unvme_alloc %ld failed", datasize);
+
+    u64 slba = 0;
+    u64 nlb = datasize / ns->blocksize;
+    u64* p = buf;
+    u64 wsize = datasize / sizeof(u64);
+    u64 pat, w;
+    int q;
     for (q = 0; q < qcount; q++) {
-        printf("Test q=%d\n", q);
-        unvme_page_t* p = unvme_alloc(ns, q, 1);
-        u64 lba = q * ns->nbpp;
-        p->slba = lba;
-        u64* buf = p->buf;
-        for (b = 0; b < len; b++) buf[b] = lba;
-        unvme_write(ns, p);
-        memset(buf, 0, ns->pagesize);
-        unvme_read(ns, p);
-        for (b = 0; b < len; b++) {
-            if (buf[b] != lba) error(1, 0, "mismatch at lba %#lx", lba);
+        pat = time(0);
+        printf("Test q=%d buf=%p lba=%#lx nlb=%ld (%08lX)\n", q, p, slba, nlb, pat);
+        for (w = 0; w < wsize; w++) p[w] = (pat << 32) + w + q;
+        if (unvme_write(ns, q, p, slba, nlb))
+            error(1, 0, "unvme_write %ld block(s) failed", nlb);
+        memset(p, 0, nlb * ns->blocksize);
+        if (unvme_read(ns, q, p, slba, nlb))
+            error(1, 0, "unvme_read %ld block(s) failed", nlb);
+        for (w = 0; w < wsize; w++) {
+            if (p[w] != ((pat << 32) + w + q))
+                error(1, 0, "mismatch at lba %#lx word %ld", slba, w);
         }
-        unvme_free(ns, p);
+        slba += nlb;
     }
 
+    unvme_free(ns, buf);
     unvme_close(ns);
     printf("SIMPLE WRITE-READ-VERIFY TEST COMPLETE\n");
     return 0;
