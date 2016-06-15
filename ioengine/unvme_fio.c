@@ -9,7 +9,6 @@
 #include <error.h>
 #include <assert.h>
 #include <pthread.h>
-#include <pciaccess.h>
 
 #include "libunvme.h"
 
