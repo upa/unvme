@@ -136,14 +136,14 @@ for rw in ${RW}; do
             cmd /bin/uname -a | tee -a ${OUTFILE}
             cmd cat ${FIOFILE} | tee -a ${OUTFILE}
             echo -e "\n========\n" >> ${OUTFILE}
-            cmd /usr/bin/free -h | tee -a ${OUTFILE}
+            cmd /usr/bin/free | tee -a ${OUTFILE}
             echo -e "\n========\n" >> ${OUTFILE}
 
             cmd ${FIO_DIR}/fio ${FIOFILE} 2>&1 | tee -a ${OUTFILE}
 
             if [ -n "$(grep maxt= ${OUTFILE})" ]; then
                 echo -e "\n========\n" >> ${OUTFILE}
-                cmd /usr/bin/free -h | tee -a ${OUTFILE}
+                cmd /usr/bin/free | tee -a ${OUTFILE}
                 rm ${FIOFILE}
             else
                 echo "### ${PROG} terminated on error ###"
