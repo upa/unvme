@@ -49,7 +49,7 @@
 #include "unvme_log.h"
 
 /// Starting device DMA address
-#define VFIO_IOVA           0x8800000000
+#define VFIO_IOVA           0x800000000
 
 /// Adjust to 4K page aligned size
 #define VFIO_PASIZE(n)      (((n) + 0xfff) & ~0xfff)
