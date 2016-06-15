@@ -31,7 +31,9 @@
 
 include ../Makefile.def
 
-TARGETS = unvme_fio
+ifneq ($(wildcard $(FIO_DIR)/fio.h),)
+	TARGETS = unvme_fio
+endif
 
 UNVME_SRC = ../src
 
