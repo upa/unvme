@@ -4,8 +4,7 @@
 #
 # Usage examples:
 #   % unvme-benchmark /dev/nvme0n1
-#   % unvme-benchmark /dev/vfio/20
-#   % unvme-benchmark spdk/05:00.0
+#   % unvme-benchmark 05:00.0
 
 PROG=$(basename $0)
 USAGE="Usage: ${PROG} DEVICE_NAME"
@@ -69,20 +68,6 @@ for i in $@; do
         fi
         FILENAME=$(echo $i | tr : .)
         DRIVER="unvme"
-        ;;
-
-    spdk/[0-9A-Fa-f][0-9A-Fa-f]:[0-9A-Fa-f][0-9A-Fa-f].[0-9A-Fa-f])
-        i=$(basename $i)
-        if [ -z "$(lspci -n | grep $i\ 0108:)" ]; then
-            echo "Device $i is not SSD"
-            exit 1
-        fi
-        if [ -z ${IOENGINE} ]; then
-            IOENGINE=../ioengine/spdk_fio
-        fi
-        FILENAME=$(echo $i | tr : .)
-        DRIVER="spdk"
-        shift
         ;;
 
     *)
