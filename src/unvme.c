@@ -264,8 +264,8 @@ static void unvme_adminq_create(unvme_session_t* ses)
 static void unvme_adminq_delete(unvme_queue_t* adminq)
 {
     DEBUG_FN("%x", unvme_dev.vfiodev->pci);
-    (void) vfio_dma_free(adminq->sqdma);
-    (void) vfio_dma_free(adminq->cqdma);
+    if (adminq->sqdma) (void) vfio_dma_free(adminq->sqdma);
+    if (adminq->cqdma) (void) vfio_dma_free(adminq->cqdma);
 }
 
 /**
