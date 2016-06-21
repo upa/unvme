@@ -65,9 +65,11 @@ typedef struct _unvme_ns {
     char                sn[20];     ///< device serial number
     char                mn[40];     ///< namespace model number
     char                fr[8];      ///< namespace firmware revision
+    u64                 blockcount; ///< total number of logical blocks
     u32                 pagesize;   ///< page size
     u32                 blocksize;  ///< logical block size
-    u64                 blockcount; ///< total number of logical blocks
+    u16                 pageshift;  ///< page size shift value
+    u16                 blockshift; ///< block size shift value
     u32                 nbpp;       ///< number of blocks per page
     u32                 maxppio;    ///< max number of pages per I/O
     u32                 maxbpio;    ///< max number of blocks per I/O

@@ -152,8 +152,8 @@ static int fio_unvme_queue(struct thread_data *td, struct io_u *io_u)
 
     int err = 0;
     void* buf = io_u->buf;
-    u64 slba = io_u->offset / unvme.ns->blocksize;
-    int nlb = io_u->xfer_buflen / unvme.ns->blocksize;
+    u64 slba = io_u->offset >> unvme.ns->blockshift;
+    int nlb = io_u->xfer_buflen >> unvme.ns->blockshift;
     int q = td->thread_number - 1;
 
     switch (io_u->ddir) {
