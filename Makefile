@@ -41,11 +41,11 @@ $(SUBDIRS):
 
 install: $(SUBDIRS)
 	mkdir -p $(INSTALLDIR)/include $(INSTALLDIR)/lib
-	/bin/install -m644 src/libunvme.h $(INSTALLDIR)/include
+	/bin/install -m644 src/unvme.h $(INSTALLDIR)/include
 	/bin/install -m644 src/libunvme.a $(INSTALLDIR)/lib
 
 uninstall:
-	$(RM) $(INSTALLDIR)/include/libunvme.* $(INSTALLDIR)/lib/libunvme.*
+	$(RM) $(INSTALLDIR)/include/unvme.h $(INSTALLDIR)/lib/libunvme.a
 
 lint:
 	@(for d in $(SUBDIRS); do $(MAKE) -C $$d lint; done)
@@ -53,5 +53,5 @@ lint:
 clean:
 	@(for d in $(SUBDIRS); do $(MAKE) -C $$d clean; done)
 
-.PHONY: all lint clean $(SUBDIRS)
+.PHONY: all install uninstall lint clean $(SUBDIRS)
 

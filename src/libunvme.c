@@ -36,7 +36,9 @@
 
 #include <stddef.h>
 #include <sched.h>
-#include "unvme.h"
+
+#include "unvme_core.h"
+
 
 /// Global lock for open/close/alloc/free
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
@@ -151,10 +153,11 @@ unvme_iod_t unvme_aread(const unvme_ns_t* ns, int qid, void* buf, u64 slba, u32 
  * @param   nlb         number of logical blocks
  * @return  I/O descriptor or NULL if failed.
  */
-unvme_iod_t unvme_awrite(const unvme_ns_t* ns, int qid, void* buf, u64 slba, u32 nlb)
+unvme_iod_t unvme_awrite(const unvme_ns_t* ns, int qid,
+                         const void* buf, u64 slba, u32 nlb)
 {
     unvme_queue_t* ioq = ((unvme_session_t*)(ns->ses))->queues + qid;
-    return unvme_do_submit(ioq, NVME_CMD_WRITE, buf, slba, nlb);
+    return unvme_do_submit(ioq, NVME_CMD_WRITE, (void*)buf, slba, nlb);
 }
 
 /**
@@ -183,10 +186,12 @@ int unvme_read(const unvme_ns_t* ns, int qid, void* buf, u64 slba, u32 nlb)
  * @param   nlb         number of logical blocks
  * @return  0 if ok else error status.
  */
-int unvme_write(const unvme_ns_t* ns, int qid, void* buf, u64 slba, u32 nlb)
+int unvme_write(const unvme_ns_t* ns, int qid,
+                const void* buf, u64 slba, u32 nlb)
 {
     unvme_queue_t* ioq = ((unvme_session_t*)(ns->ses))->queues + qid;
-    unvme_desc_t* desc = unvme_do_submit(ioq, NVME_CMD_WRITE, buf, slba, nlb);
+    unvme_desc_t* desc = unvme_do_submit(ioq, NVME_CMD_WRITE, (void*)buf, slba, nlb);
     if (desc) return unvme_do_poll(desc, UNVME_TIMEOUT);
     return -1;
 }
+

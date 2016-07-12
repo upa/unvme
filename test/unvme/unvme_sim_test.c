@@ -42,7 +42,7 @@
 #include <error.h>
 #include <time.h>
 
-#include "libunvme.h"
+#include "unvme.h"
 
 
 int main(int argc, char** argv)

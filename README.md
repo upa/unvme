@@ -8,7 +8,7 @@ To build and install, run:
 
     $ make install
 
-This will install libunvme.h in the /usr/local/include directory
+This will install unvme.h in the /usr/local/include directory
 and libunvme.a in the /usr/local/lib directory.
 
 

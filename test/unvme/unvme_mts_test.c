@@ -45,7 +45,7 @@
 #include <semaphore.h>
 #include <time.h>
 
-#include "libunvme.h"
+#include "unvme.h"
 
 // Global variables
 static char* pciname;           ///< PCI device name

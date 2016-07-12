@@ -45,7 +45,7 @@
 #include <semaphore.h>
 #include <time.h>
 
-#include "libunvme.h"
+#include "unvme.h"
 #include "rdtsc.h"
 
 /// macro to print an error message

@@ -10,7 +10,7 @@
 #include <assert.h>
 #include <pthread.h>
 
-#include "libunvme.h"
+#include "unvme.h"
 
 #include "config-host.h"
 #include "fio.h"

@@ -31,7 +31,7 @@
 
 include ../Makefile.def
 
-TARGET_LIB := libunvme.a
+TARGET := libunvme.a
 
 CFLAGS += $(COPT) -Wall -fPIC
 LDLIBS += -pthread -lrt
@@ -40,11 +40,11 @@ INCS := $(wildcard *.h)
 SRCS := $(wildcard *.c)
 OBJS := $(SRCS:.c=.o)
 
-all: $(TARGET_LIB)
+all: $(TARGET)
 
 $(OBJS): $(INCS)
 
-$(TARGET_LIB): $(OBJS)
+$(TARGET): $(OBJS)
 	$(AR) crs $@ $(OBJS)
 
 %.i: %.c
@@ -55,10 +55,9 @@ lint: clean $(OBJS)
 	@$(RM) *.o
 
 clean:
-	$(RM) $(TARGET_LIB) *.o *.i
+	$(RM) $(TARGET) *.o *.i
 	@if [ "$(HOME)" = "/root" ]; then $(RM) /dev/shm/unvme*; fi
 
 .PHONY: all lint clean
 
-.EXPORT_ALL_VARIABLES:
 

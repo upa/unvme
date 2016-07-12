@@ -39,6 +39,7 @@
 
 #include "unvme_vfio.h"
 #include "unvme_nvme.h"
+#include "unvme_log.h"
 
 static vfio_device_t* vfiodev;
 static nvme_device_t* nvmedev;
@@ -57,8 +58,11 @@ static void nvme_setup(const char* pciname, int aqsize)
         error(1, 0, "invalid PCI device %s (expect BB:DD.F format)", pciname);
     }
     int pci = (b << 16) + (d << 8) + f;
+
+    if (log_open("/dev/shm/unvme.log", "w")) exit(1);
     vfiodev = vfio_create(pci);
     if (!vfiodev) error(1, 0, "vfio_create");
+
     nvmedev = nvme_create(vfiodev->fd);
     if (!nvmedev) error(1, 0, "nvme_create");
 

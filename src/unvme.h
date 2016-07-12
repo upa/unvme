@@ -30,92 +30,70 @@
  */
 
 /**
- * @file unvme.h
- * @brief UNVMe header file.
+ * @file
+ * @brief User space NVMe client header file.
  */
 
 #ifndef _UNVME_H
 #define _UNVME_H
 
-#include <sys/types.h>
-
-#include "rdtsc.h"
-#include "unvme_log.h"
-#include "unvme_vfio.h"
-#include "unvme_nvme.h"
-#include "libunvme.h"
+#include <stdint.h>
 
 
-/// Log and print an unrecoverable error message and exit
-#define FATAL(fmt, arg...)  \
-            do { ERROR(fmt, ##arg); unvme_cleanup(); exit(1); } while (0)
+#ifndef _UNVME_TYPE
+#define _UNVME_TYPE                 ///< bit size data types
+typedef int8_t          s8;         ///< 8-bit signed
+typedef int16_t         s16;        ///< 16-bit signed
+typedef int32_t         s32;        ///< 32-bit signed
+typedef int64_t         s64;        ///< 64-bit signed
+typedef uint8_t         u8;         ///< 8-bit unsigned
+typedef uint16_t        u16;        ///< 16-bit unsigned
+typedef uint32_t        u32;        ///< 32-bit unsigned
+typedef uint64_t        u64;        ///< 64-bit unsigned
+#endif // _UNVME_TYPE
 
-void unvme_cleanup();
+#define UNVME_TIMEOUT   60          ///< I/O timeout in seconds
 
-struct _unvme_session;
-struct _unvme_queue;
 
-/// IO memory allocation tracker per session
-typedef struct _unvme_iomem {
-    pthread_spinlock_t      lock;       ///< lock to access memory
-    vfio_dma_t**            map;        ///< dynamic array of allocated memory
-    int                     size;       ///< array size
-    int                     count;      ///< array count
-} unvme_iomem_t;
+/// Namespace attributes structure
+typedef struct _unvme_ns {
+    u16                 id;         ///< namespace id
+    u16                 vid;        ///< vendor id
+    u32                 sid;        ///< session id
+    u32                 qcount;     ///< number of I/O queues
+    u32                 qsize;      ///< I/O queue size
+    char                sn[20];     ///< device serial number
+    char                mn[40];     ///< namespace model number
+    char                fr[8];      ///< namespace firmware revision
+    u64                 blockcount; ///< total number of logical blocks
+    u32                 pagesize;   ///< page size
+    u32                 blocksize;  ///< logical block size
+    u16                 pageshift;  ///< page size shift value
+    u16                 blockshift; ///< block size shift value
+    u32                 nbpp;       ///< number of blocks per page
+    u32                 maxppio;    ///< max number of pages per I/O
+    u32                 maxbpio;    ///< max number of blocks per I/O
+    u16                 maxiopq;    ///< max concurrent I/O per queue
+    u16                 maxqsize;   ///< max queue size supported
+    void*               ses;        ///< associated session
+} unvme_ns_t;
 
-/// IO descriptor
-typedef struct _unvme_desc {
-    u32                     id;         ///< descriptor id
-    u32                     nlb;        ///< number of blocks
-    u64                     slba;       ///< starting lba
-    void*                   buf;        ///< buffer
-    int                     opc;        ///< op code
-    int                     error;      ///< error status
-    struct _unvme_desc*     prev;       ///< previous descriptor node
-    struct _unvme_desc*     next;       ///< next descriptor node
-    struct _unvme_queue*    ioq;        ///< queue owner
-    int                     cidcount;   ///< number of pending cids
-    u64                     cidmask[];  ///< cid pending bit mask
-} unvme_desc_t;
+/// I/O descriptor
+typedef void*           unvme_iod_t;
 
-/// queue context
-typedef struct _unvme_queue {
-    struct _unvme_session*  ses;        ///< session reference
-    nvme_queue_t*           nvq;        ///< NVMe associated queue
-    vfio_dma_t*             sqdma;      ///< submission queue allocation
-    vfio_dma_t*             cqdma;      ///< completion queue allocation
-    vfio_dma_t*             prplist;    ///< PRP shared list
-    int                     prpsize;    ///< PRP size per queue entry
-    u16                     id;         ///< NVMe queue id
-    u16                     cid;        ///< next cid to check and use
-    int                     cidcount;   ///< number of pending cids
-    int                     desccount;  ///< number of pending descriptors
-    u64*                    cidmask;    ///< cid pending bit mask
-    unvme_desc_t*           desclist;   ///< use descriptor list
-    unvme_desc_t*           descfree;   ///< free descriptor list
-    unvme_desc_t*           descnext;   ///< next pending descriptor to process
-} unvme_queue_t;
+// Export functions
+const unvme_ns_t* unvme_open(const char* pciname, int nsid, int qcount, int qsize);
+int unvme_close(const unvme_ns_t* ns);
 
-/// open session
-typedef struct _unvme_session {
-    unvme_ns_t              ns;         ///< namespace info
-    int                     id;         ///< session id (same as queues[0] id)
-    int                     qcount;     ///< number of queues
-    int                     qsize;      ///< queue size
-    int                     masksize;   ///< bit mask size
-    unvme_queue_t*          queues;     ///< array of queues
-    unvme_iomem_t           iomem;      ///< IO allocated memory info
-    struct _unvme_session*  prev;       ///< previous session node
-    struct _unvme_session*  next;       ///< next session node
-} unvme_session_t;
+void* unvme_alloc(const unvme_ns_t* ns, u64 size);
+int unvme_free(const unvme_ns_t* ns, void* buf);
 
-/// device context
-typedef struct _unvme_device {
-    vfio_device_t*          vfiodev;    ///< vfio device
-    nvme_device_t*          nvmedev;    ///< nvme device
-    unvme_session_t*        ses;        ///< session list
-    int                     numioqs;    ///< total number of IO queues
-} unvme_device_t;
+int unvme_write(const unvme_ns_t* ns, int qid, const void* buf, u64 slba, u32 nlb);
+int unvme_read(const unvme_ns_t* ns, int qid, void* buf, u64 slba, u32 nlb);
 
-#endif  // _UNVME_H
+unvme_iod_t unvme_awrite(const unvme_ns_t* ns, int qid, const void* buf, u64 slba, u32 nlb);
+unvme_iod_t unvme_aread(const unvme_ns_t* ns, int qid, void* buf, u64 slba, u32 nlb);
+int unvme_apoll(unvme_iod_t iod, int timeout);
+
+#endif // _UNVME_H
 

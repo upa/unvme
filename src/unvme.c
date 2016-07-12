@@ -39,7 +39,8 @@
 #include <signal.h>
 #include <sched.h>
 
-#include "unvme.h"
+#include "unvme_core.h"
+
 
 /// @cond
 #define PDEBUG(fmt, arg...) //fprintf(stderr, fmt "\n", ##arg)
