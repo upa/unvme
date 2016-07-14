@@ -124,7 +124,6 @@ where\n\
 
     char* s = argv[2];
     int nsid = strtol(s, &s, 0);
-    if (*s || nsid <= 0) error(1, 0, usage, argv[0]);
     int lid = strtol(argv[3], &s, 0);
     if (*s || (lid < 1 || lid > 3)) error(1, 0, usage, argv[0]);
 
