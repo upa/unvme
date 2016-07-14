@@ -32,7 +32,7 @@
 SHELL := /bin/sh
 
 # Set the default optimization flag
-COPT ?= -O3
+COPT ?= -O2
 
 # To turn on lots of debug messages
 #CPPFLAGS += -DUNVME_DEBUG
