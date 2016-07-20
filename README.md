@@ -44,23 +44,52 @@ The APIs are designed with application ease of use in mind.
     unvme_apoll()   -   Poll an asynchronous read/write for completion.
 
 
-Prior to using the UNVMe driver, the script test/unvme-setup needs to be run
-once.  By default, it will bind all NVMe devices in the system to be used with
-UNVMe driver.  For usage info, run:
+Prior to using the UNVMe driver, the script test/unvme-setup needs to be
+run once.  It will bind a given list of, or by default all, NVMe devices
+in the system to the UNVMe driver.  For usage info, run:
 
     $ test/unvme-setup help
     Usage:
         unvme-setup                 # enable all NVMe devices for UNVMe
         unvme-setup [BB:DD.F]...    # enable specific NVMe devices for UNVMe
-        unvme-setup reset           # reset all NVMe devices to kernel driver
         unvme-setup show            # show all NVMe devices mapping info
+        unvme-setup reset           # reset all NVMe devices to kernel driver
 
 
-Note that the previous release with implementation of various models is now
-archived in the "all_models" git branch.  This implementation is the
-result of such experimental work and porting applications.  The primary
-feature here is that it allows an application to allocate any size buffer
-(limited only by available memory) and to read/write any number of blocks.
+To run all UNVMe tests (after unvme-setup), run:
+
+    $ test/unvme-test PCINAME       # PCINAME as 01:00.0
+
+
+Design Notes
+============
+
+UNVMe is based on a modular design.  The source code is composed of four
+independent modules:
+
+    VFIO    -   VFIO supported device and I/O memory wrapper functions
+                (unvme_vfio.h unvme_vfio.c)
+
+    NVMe    -   NVMe supported functions
+                (unvme_nvme.h unvme_nvme.c)
+
+    Log     -   Simple logging supported functions
+                (unvme_log.h unvme_log.c)
+
+    UNVMe   -   User Space driver interface built on top of the other three modules
+                (unvme.h unvme.c unvme_core.h unvme_core.c)
+
+
+Examples of NVMe admin command implementation utilizing only the
+VFIO, NVMe, and Log modules without depending on the UNVMe module are
+provided under test/nvme directory.
+
+
+This UNVMe API design is a result of a more extensive research work done
+previously which is now archived in the "all_models" branch.  The revised
+API focuses more on application ease of use.  It allows an application to
+allocate any size buffer (limited only by available memory) and read/write
+any number of blocks.
 
 
 

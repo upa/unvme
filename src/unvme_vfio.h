@@ -57,9 +57,9 @@ typedef struct _vfio_device {
 
 // Export functions
 vfio_device_t* vfio_create(int pci);
+void vfio_delete(vfio_device_t* vdev);
 int vfio_msix_enable(vfio_device_t* vdev, int start, int nvec, __s32* efds);
 int vfio_msix_disable(vfio_device_t* vdev);
-void vfio_delete(vfio_device_t* vdev);
 vfio_dma_t* vfio_dma_map(vfio_device_t* vdev, size_t size, void* pmb);
 int vfio_dma_unmap(vfio_dma_t* dma);
 vfio_dma_t* vfio_dma_alloc(vfio_device_t* vdev, size_t size);

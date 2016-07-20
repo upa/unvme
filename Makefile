@@ -41,8 +41,8 @@ $(SUBDIRS):
 
 install: $(SUBDIRS)
 	mkdir -p $(INSTALLDIR)/include $(INSTALLDIR)/lib
-	/bin/install -m644 src/unvme.h $(INSTALLDIR)/include
-	/bin/install -m644 src/libunvme.a $(INSTALLDIR)/lib
+	/usr/bin/install -m644 src/unvme.h $(INSTALLDIR)/include
+	/usr/bin/install -m644 src/libunvme.a $(INSTALLDIR)/lib
 
 uninstall:
 	$(RM) $(INSTALLDIR)/include/unvme.h $(INSTALLDIR)/lib/libunvme.a

@@ -108,7 +108,7 @@ int main(int argc, char** argv)
     void** buf = malloc(iocount * sizeof(void*));
 
     for (q = 0; q < qcount; q++) {
-        printf("\n> Test q=%d ioc=%d\n", q, iocount);
+        printf("> Test q=%d ioc=%d\n", q, iocount);
         int t = time(0);
 
         printf("Test alloc\n");
@@ -189,6 +189,6 @@ int main(int argc, char** argv)
     free(buf);
     free(iod);
     unvme_close(ns);
-    printf("\nAPI TEST COMPLETE\n");
+    printf("API TEST COMPLETE\n");
     return 0;
 }

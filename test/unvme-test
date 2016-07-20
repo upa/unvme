@@ -1,0 +1,16 @@
+#!/bin/sh
+
+[ $# -ne 1 ] && echo "Usage: $0 PCINAME" && exit 1
+
+mycmd() {
+    echo -e "\n\$ $* ($(date))"
+    eval $*
+    if [ $? -ne 0 ]; then myerror "EXIT"; fi
+}
+
+dir=$(dirname $0)
+mycmd ${dir}/unvme/unvme_sim_test $*
+mycmd ${dir}/unvme/unvme_api_test $*
+mycmd ${dir}/unvme/unvme_mts_test $*
+mycmd ${dir}/unvme/unvme_lat_test $*
+

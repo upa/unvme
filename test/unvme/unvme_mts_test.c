@@ -153,6 +153,7 @@ void* test_queue(void* arg)
         }
     }
 
+    free(buflen);
     free(buf);
     free(iod);
     printf("Test s%d q%d completed (lba %#lx)\n", ses->id, ses->qid, ses->slba);
