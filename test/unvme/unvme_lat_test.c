@@ -257,7 +257,7 @@ int main(int argc, char* argv[])
     ses = calloc(qcount, sizeof(pthread_t));
 
     run_test("read", 0);
-    run_test("write", 0);
+    run_test("write", 1);
 
     free(ses);
     sem_destroy(&sem1);
