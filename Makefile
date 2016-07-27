@@ -43,9 +43,11 @@ install: $(SUBDIRS)
 	mkdir -p $(INSTALLDIR)/include $(INSTALLDIR)/lib
 	/usr/bin/install -m644 src/unvme.h $(INSTALLDIR)/include
 	/usr/bin/install -m644 src/libunvme.a $(INSTALLDIR)/lib
+	/usr/bin/install -m755 test/unvme-setup $(INSTALLDIR)/bin
 
 uninstall:
-	$(RM) $(INSTALLDIR)/include/unvme.h $(INSTALLDIR)/lib/libunvme.a
+	$(RM) $(INSTALLDIR)/include/unvme.h $(INSTALLDIR)/lib/libunvme.a \
+	      $(INSTALLDIR)/bin/unvme-setup
 
 lint:
 	@(for d in $(SUBDIRS); do $(MAKE) -C $$d lint; done)
