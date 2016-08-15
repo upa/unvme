@@ -107,7 +107,7 @@ static void unvme_ns_init(unvme_session_t* ses, int nsid)
     } else {
         memcpy(ns, &unvme_dev.ses->ns, sizeof(unvme_ns_t));
         nvme_identify_ns_t* idns = (nvme_identify_ns_t*)dma->buf;
-        ns->blockcount = (u64) idns->nuse;
+        ns->blockcount = idns->nuse;
         ns->blockshift = idns->lbaf[idns->flbas & 0xF].lbads;
         ns->blocksize = 1 << ns->blockshift;
         if (ns->blocksize > ns->pagesize || ns->blockcount < 8) {
@@ -302,7 +302,7 @@ static unvme_session_t* unvme_session_create(int nsid, int qcount, int qsize)
     ses->queues = (unvme_queue_t*)(ses + 1);
     ses->qcount = qcount;
     ses->qsize = qsize;
-    ses->masksize = (qsize + 63 / 64) * sizeof(u64);
+    ses->masksize = ((qsize + 63) / 64) * sizeof(u64);
 
     if (pthread_spin_init(&ses->iomem.lock, PTHREAD_PROCESS_SHARED))
         FATAL("pthread_spin_init");
