@@ -5,7 +5,7 @@
 mycmd() {
     echo -e "\n\$ $* ($(date))"
     eval $*
-    if [ $? -ne 0 ]; then myerror "EXIT"; fi
+    if [ $? -ne 0 ]; then exit 1; fi
 }
 
 dir=$(dirname $0)
