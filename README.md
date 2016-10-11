@@ -8,23 +8,29 @@ To build and install, run:
 
     $ make install
 
-This will install unvme.h in the /usr/local/include directory
-and libunvme.a in the /usr/local/lib directory.
+This will compile and then copy:
+
+    unvme.h         to  /usr/local/include directory
+    libunvme.a      to  /usr/local/lib directory
 
 
-The APIs are designed with application ease of use in mind.
+The UNVMe APIs are designed with application ease of use in mind, and as
+defined in unvme.h, composed of the following supported functions:
 
     unvme_open()    -   This function must be invoked first to establish a
                         connection to the specified PCI device (e.g. 05:00.0).
                         The qcount and qsize parameters provide the application 
                         the ability to adjust its performance based on the
-                        device characteristics.  For best performance, the
-                        number of queues should be used to associate with the
-                        number of application threads.  The number of queues,
-                        however, will be limited by the device support.
+                        device characteristics.  For best practice and best
+                        application performance, the number of queues parameter
+                        should be the same as the number of threads used by
+                        the application.  The number of queues, however, is
+                        limited by the device support.
+
     unvme_close()   -   Close a device connection.
 
     unvme_alloc()   -   Allocate an I/O memory buffer of a given size.
+
     unvme_free()    -   Free the allocated buffer.
 
 
@@ -34,21 +40,25 @@ The APIs are designed with application ease of use in mind.
                         512-byte offset granularity.  The qid (range from 0 to
                         qcount - 1) may be used for thread safety.  Each queue
                         must only be accessed by a single thread at any one time.
+
     unvme_read()    -   Read from the device (like unvme_write).
 
 
     unvme_awrite()  -   Send a write command to the device asynchronously and
                         return immediately.  The returned descriptor is used to
                         poll for completion.
+
     unvme_aread()   -   Send an asynchronous read (like unvme_awrite).
+
     unvme_apoll()   -   Poll an asynchronous read/write for completion.
 
 
-Prior to using the UNVMe driver, the script test/unvme-setup needs to be
-run once.  It will bind a given list of, or by default all, NVMe devices
-in the system to the UNVMe driver.  For usage info, run:
+Prior to using the UNVMe driver, the script test/unvme-setup needs to be run once.
+It will bind all (or a specified list of) NVMe devices in the system to be used with
+the UNVMe driver.  For usage info, run:
 
     $ test/unvme-setup help
+
     Usage:
         unvme-setup                 # enable all NVMe devices for UNVMe
         unvme-setup [BB:DD.F]...    # enable specific NVMe devices for UNVMe
@@ -56,40 +66,53 @@ in the system to the UNVMe driver.  For usage info, run:
         unvme-setup reset           # reset all NVMe devices to kernel driver
 
 
-To run all UNVMe tests (after unvme-setup), run:
+To run UNVMe basic tests (after unvme-setup):
 
     $ test/unvme-test PCINAME       # PCINAME as 01:00.0
 
 
-Design Notes
-============
 
-UNVMe is based on a modular design.  The source code is composed of four
-independent modules:
+I/O Benchmark Tests
+===================
 
-    VFIO    -   VFIO supported device and I/O memory wrapper functions
-                (unvme_vfio.h unvme_vfio.c)
+To run fio benchmark tests against UNVMe:
 
-    NVMe    -   NVMe supported functions
-                (unvme_nvme.h unvme_nvme.c)
+    1) Compile the fio source code (available on https://github.com/axboe/fio).
 
-    Log     -   Simple logging supported functions
-                (unvme_log.h unvme_log.c)
+    2) Edit Makefile.def and set FIO_DIR to the compiled fio source code.
+       Setting FIO_DIR will enable ioengine/unvme_fio to be built.
 
-    UNVMe   -   User Space driver interface built on top of the other three modules
-                (unvme.h unvme.c unvme_core.h unvme_core.c)
+    3) Recompile the UNVMe code to include fio engine code, run:
+    
+       $ make
 
+       Note that the unvme_fio.c engine has been verified to work with the fio
+       versions 2.7 through 2.14 (as fio source code is constantly changing).
 
-Examples of NVMe admin command implementation utilizing only the
-VFIO, NVMe, and Log modules without depending on the UNVMe module are
-provided under test/nvme directory.
+    4) Launch the test script:
+    
+       $ test/unvme-benchmark PCINAME
 
+       Note the benchmark test will, by default, run random read and write tests
+       with queue count 1, 4, 8, 16 and queue depth of 1, 4, 8, 16, 32, 64.
+       Each test will be run for 7 minutes which includes a 2-minute ramp time.
+       These default settings can be overridden from the shell command line, e.g.:
 
-This UNVMe API design is a result of a more extensive research work done
-previously which is now archived in the "all_models" branch.  The revised
-API focuses more on application ease of use.  It allows an application to
-allocate any size buffer (limited only by available memory) and read/write
-any number of blocks.
+       $ RAMPTIME=60 RUNTIME=120 QCOUNT="1 4" QDEPTH="4 8" test/unvme-benchmark 05:00.0
+
+       If the specified PCINAME argument begins with /dev/nvme, the test will assume
+       the SSD is bound to the kernel space driver and thus use the "libaio" engine.
+       Otherwise, if the PCINAME matches the device format BB:DD:F, the test will assume
+       the SSD is bound to UNVMe driver and thus will use the "ioengine/unvme_fio" engine.
+       The benchmark results will be saved in test/out directory.
+
+       For comparison, unvme-benchmark should be run on the same device binding to the
+       kernel space driver as well as the user space UVNMe driver.  For example, run:
+
+       $ test/unvme-setup
+       $ test/unvme-benchmark 01:00.0
+       $ test/unvme-setup reset
+       $ test/unvme-benchmark /dev/nvme0n1
 
 
 
@@ -97,8 +120,8 @@ System Requirements
 ===================
 
 UNVMe depends on features provided by the VFIO module in the Linux kernel
-(introduced since 3.6).  The code has been built and tested on CentOS 6
-and 7 running on x86_64 CPU based systems.  
+(introduced since 3.6).  UNVMe code has been built and tested with CentOS 6 and 7
+running on x86_64 CPU based systems.
 
 UNVMe requires the following hardware and software support:
 
@@ -125,4 +148,35 @@ UNVMe requires the following hardware and software support:
                 The user must also copy the header file from the kernel source
                 directory include/uapi/linux/vfio.h to /usr/include/linux.
 
+
+
+Design Notes
+============
+
+The UNVMe source code, under the src directory, contains four independent modules:
+
+    VFIO    -   VFIO supported device and I/O memory wrapper functions
+                (unvme_vfio.h unvme_vfio.c)
+
+    NVMe    -   NVMe supported functions
+                (unvme_nvme.h unvme_nvme.c)
+
+    Log     -   Simple logging supported functions
+                (unvme_log.h unvme_log.c)
+
+    UNVMe   -   User Space driver interface built on top of the other three modules
+                (unvme.h unvme.c unvme_core.h unvme_core.c)
+
+
+The test/nvme directory contains a few examples of NVMe admin commands constructed
+using the VFIO, NVMe, and Log modules (without depending on the UNVMe module).
+The user can build more NVMe admin commands based on those examples.
+
+This UNVMe API design is a result of a more extensive work done previously
+which is now archived in the "all_models" branch.  The revised APIs are designed
+to make the tasks of application development and porting easier.  UNVMe allows an
+application to allocate any size buffer (limited by available memory) as well as
+read/write any number of blocks (beyond hardware limitations) in a single request
+thus eliminating the need for applications to be aware and build logic around
+hardware limitations.
 
