@@ -77,7 +77,7 @@ static int do_unvme_init(char* pciname, struct thread_data *td)
  */
 static struct io_u* fio_unvme_event(struct thread_data *td, int event)
 {
-    unvme_data_t* udata = td->io_ops->data;
+    unvme_data_t* udata = td->io_ops_data;
     struct io_u* io_u = NULL;
 
     if (udata->head != udata->tail) {
@@ -97,7 +97,7 @@ static struct io_u* fio_unvme_event(struct thread_data *td, int event)
 static int fio_unvme_getevents(struct thread_data *td, unsigned int min,
                                unsigned int max, const struct timespec *t)
 {
-    unvme_data_t* udata = td->io_ops->data;
+    unvme_data_t* udata = td->io_ops_data;
     int events = 0;
     struct timespec t0, t1;
     uint64_t timeout = 0;
@@ -217,7 +217,7 @@ static int fio_unvme_init(struct thread_data *td)
         return 1;
     }
 
-    td->io_ops->data = udata;
+    td->io_ops_data = udata;
     return 0;
 }
 
@@ -228,7 +228,7 @@ static int fio_unvme_init(struct thread_data *td)
  */
 static void fio_unvme_cleanup(struct thread_data *td)
 {
-    unvme_data_t* udata = td->io_ops->data;
+    unvme_data_t* udata = td->io_ops_data;
     if (udata) {
         if (udata->iocq) free(udata->iocq);
         free(udata);

@@ -32,13 +32,16 @@
 include ../Makefile.def
 
 ifneq ($(wildcard $(FIO_DIR)/fio.h),)
-	TARGETS = unvme_fio
+	TARGETS := unvme_fio
+ifeq ($(shell grep -c io_ops_data $(FIO_DIR)/fio.h),0)
+	FIO_FLAGS := -Dio_ops_data="io_ops->data"
+endif
 endif
 
 UNVME_SRC = ../src
 
 COPT ?= -O3
-CPPFLAGS += -D_GNU_SOURCE -I$(UNVME_SRC) -I$(FIO_DIR)
+CPPFLAGS += -D_GNU_SOURCE -I$(UNVME_SRC) -I$(FIO_DIR) $(FIO_FLAGS)
 CFLAGS += $(COPT) -Wall -fPIC
 LDFLAGS += -shared -rdynamic
 LDLIBS += $(UNVME_SRC)/libunvme.a -lpthread -lrt
