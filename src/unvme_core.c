@@ -107,7 +107,7 @@ static void unvme_ns_init(unvme_session_t* ses, int nsid)
     } else {
         memcpy(ns, &unvme_dev.ses->ns, sizeof(unvme_ns_t));
         nvme_identify_ns_t* idns = (nvme_identify_ns_t*)dma->buf;
-        ns->blockcount = idns->nuse;
+        ns->blockcount = idns->ncap;
         ns->blockshift = idns->lbaf[idns->flbas & 0xF].lbads;
         ns->blocksize = 1 << ns->blockshift;
         if (ns->blocksize > ns->pagesize || ns->blockcount < 8) {
