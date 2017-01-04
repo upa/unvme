@@ -41,39 +41,45 @@
 
 
 // Static global variables
-static FILE* log_fp = NULL;                 ///< log file pointer
-static pthread_spinlock_t log_lock = 0;     ///< log locking
+static FILE*                log_fp = NULL;  ///< log file pointer
+static int                  log_count = 0;  ///< log open count
+static pthread_spinlock_t   log_lock = 0;   ///< log locking
 
 
 /**
- * Open log file.
+ * Open log file.  Only one log file is supported and the first call
+ * will create the log file by its specified name.  Subsequent call
+ * to open a log will be counted but ignored.
  * @param   name        log filename
  * @param   mode        open mode
- * @return  0 if ok else -1.
+ * @return  0 indicating 
  */
 int log_open(const char* name, const char* mode)
 {
-    if (log_fp || !name) return 0;
-
-    if (pthread_spin_init(&log_lock, PTHREAD_PROCESS_PRIVATE)) {
-        perror("pthread_spin_init");
-        return -1;
-    }
-
-    log_fp = fopen(name, mode);
     if (!log_fp) {
-        perror("log_open");
-        return -1;
+        if (pthread_spin_init(&log_lock, PTHREAD_PROCESS_PRIVATE)) {
+            perror("pthread_spin_init");
+            return -1;
+        }
+
+        log_fp = fopen(name, mode);
+        if (!log_fp) {
+            perror("log_open");
+            return -1;
+        }
     }
 
+    log_count++;
     return 0;
 }
 
 /**
- * Close the log file.
+ * Close the log file (only on the last close).
  */
 void log_close()
 {
+    if ((log_count == 0) || (--log_count)) return;
+
     if (log_fp && log_fp != stdout) {
         fclose(log_fp);
         log_fp = NULL;

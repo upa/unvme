@@ -139,7 +139,8 @@ static vfio_mem_t* vfio_mem_alloc(vfio_device_t* vdev,
     if (pmb) {
         mem->dma.buf = pmb;
     } else {
-        mem->dma.buf = mmap(0, size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANON, -1, 0);
+        mem->dma.buf = mmap(0, size, PROT_READ|PROT_WRITE,
+                            MAP_PRIVATE|MAP_ANONYMOUS|MAP_LOCKED, -1, 0);
         if (mem->dma.buf == MAP_FAILED) {
             ERROR("mmap errno %d", errno);
             goto error;
@@ -353,7 +354,7 @@ vfio_device_t* vfio_create(int pci)
     vfio_dev_t* dev = zalloc(sizeof(*dev));
     dev->pci = pci;
     dev->iova = VFIO_IOVA;
-    if (pthread_spin_init(&dev->lock, PTHREAD_PROCESS_SHARED)) return NULL;
+    if (pthread_spin_init(&dev->lock, PTHREAD_PROCESS_PRIVATE)) return NULL;
 
     // map vfio context
     if ((dev->contfd = open("/dev/vfio/vfio", O_RDWR)) < 0) {

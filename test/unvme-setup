@@ -7,7 +7,7 @@ USAGE="Usage:
     ${PROG}                 # enable all NVMe devices for UNVMe
     ${PROG} [BB:DD.F]...    # enable specific NVMe devices for UNVMe
     ${PROG} reset           # reset all NVMe devices to kernel driver
-    ${PROG} show            # show all NVMe devices mapping info"
+    ${PROG} list            # list all NVMe devices mapping info"
 
 trap 'exit 1' TERM
 export EXIT_PID=$$
@@ -126,7 +126,7 @@ elif [ "$1" == "reset" ]; then
     sleep 3
     print_map
 
-elif [ "$1" == "show" ]; then
+elif [ "$1" == "list" ]; then
     print_map
 
 else

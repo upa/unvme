@@ -83,8 +83,8 @@ nvme_device_t* nvme_create(int mapfd)
 {
     nvme_device_t* dev = zalloc(sizeof(*dev));
 
-    dev->reg = mmap(0, sizeof(nvme_controller_reg_t),
-                    PROT_READ|PROT_WRITE, MAP_SHARED, mapfd, 0);
+    dev->reg = mmap(0, sizeof(nvme_controller_reg_t), PROT_READ|PROT_WRITE,
+                    MAP_SHARED|MAP_LOCKED, mapfd, 0);
     if (dev->reg == MAP_FAILED) {
         ERROR("mmap errno %d", errno);
         return NULL;
@@ -184,6 +184,7 @@ static int nvme_submit_cmd(nvme_queue_t* q)
  */
 int nvme_check_completion(nvme_queue_t* q, int* stat)
 {
+    *stat = 0;
     nvme_cq_entry_t* cqe = &q->cq[q->cq_head];
     if (cqe->p == q->cq_phase) return -1;
 

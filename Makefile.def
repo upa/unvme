@@ -34,7 +34,7 @@ SHELL := /bin/sh
 # Set the default optimization flag
 COPT ?= -O2
 
-# To turn on lots of debug messages
+# To turn on debug message logging
 #CPPFLAGS += -DUNVME_DEBUG
 
 # To build the ioengine modules, specify fio directory where the header files

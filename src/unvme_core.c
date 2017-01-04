@@ -43,28 +43,37 @@
 
 
 /// @cond
+
 #define PDEBUG(fmt, arg...) //fprintf(stderr, fmt "\n", ##arg)
 
-#define LIST_ADD(head, node)                            \
-            if ((head) != NULL) {                       \
-                (node)->next = (head);                  \
-                (node)->prev = (head)->prev;            \
-                (head)->prev->next = (node);            \
-                (head)->prev = (node);                  \
-            } else {                                    \
-                (node)->next = (node)->prev = (node);   \
-                (head) = (node);                        \
+#define LIST_ADD(head, node)                                    \
+            if ((head) != NULL) {                               \
+                (node)->next = (head);                          \
+                (node)->prev = (head)->prev;                    \
+                (head)->prev->next = (node);                    \
+                (head)->prev = (node);                          \
+            } else {                                            \
+                (node)->next = (node)->prev = (node);           \
+                (head) = (node);                                \
             }
                 
-#define LIST_DEL(head, node)                            \
-            if ((node->next) != (node)) {               \
-                (node)->next->prev = (node)->prev;      \
-                (node)->prev->next = (node)->next;      \
-                (head) = (node)->next;                  \
-            } else {                                    \
-                (head) = NULL;                          \
+#define LIST_DEL(head, node)                                    \
+            if ((node->next) != (node)) {                       \
+                (node)->next->prev = (node)->prev;              \
+                (node)->prev->next = (node)->next;              \
+                if ((head) == (node)) (head) = (node)->next;    \
+            } else {                                            \
+                (head) = NULL;                                  \
             }
+
 /// @endcond
+
+/// Log and print an unrecoverable error message and exit
+#define FATAL(fmt, arg...)  \
+            do { ERROR(fmt, ##arg); unvme_cleanup(); abort(); } while (0)
+
+void unvme_cleanup();
+
 
 // Global variables
 unvme_device_t      unvme_dev;                              ///< device
@@ -218,9 +227,9 @@ static void unvme_ioq_create(unvme_session_t* ses, int sqi)
 
     unvme_dev.numioqs++;
 
-    INFO_FN("%x: q=%d qc=%d qs=%d db=%#04lx", unvme_dev.vfiodev->pci,
-            ioq->nvq->id, unvme_dev.numioqs, ioq->nvq->size,
-            (u64)ioq->nvq->sq_doorbell - (u64)unvme_dev.nvmedev->reg);
+    DEBUG_FN("%x: q=%d qc=%d qs=%d db=%#04lx", unvme_dev.vfiodev->pci,
+             ioq->nvq->id, unvme_dev.numioqs, ioq->nvq->size,
+             (u64)ioq->nvq->sq_doorbell - (u64)unvme_dev.nvmedev->reg);
 }
 
 /**
@@ -304,7 +313,7 @@ static unvme_session_t* unvme_session_create(int nsid, int qcount, int qsize)
     ses->qsize = qsize;
     ses->masksize = ((qsize + 63) / 64) * sizeof(u64);
 
-    if (pthread_spin_init(&ses->iomem.lock, PTHREAD_PROCESS_SHARED))
+    if (pthread_spin_init(&ses->iomem.lock, PTHREAD_PROCESS_PRIVATE))
         FATAL("pthread_spin_init");
 
     LIST_ADD(unvme_dev.ses, ses);
@@ -366,8 +375,8 @@ static void unvme_session_delete(unvme_session_t* ses)
 static void unvme_init(int pci)
 {
     if (log_open(unvme_logname, "w")) exit(1);
-    INFO_FN();
-    if (mlockall(MCL_CURRENT|MCL_FUTURE) < 0) FATAL("mlockall");
+    DEBUG_FN();
+    //if (mlockall(MCL_CURRENT|MCL_FUTURE) < 0) FATAL("mlockall");
     unvme_dev.vfiodev = vfio_create(pci);
     if (!unvme_dev.vfiodev) FATAL("vfio_create");
     unvme_dev.nvmedev = nvme_create(unvme_dev.vfiodev->fd);
@@ -400,7 +409,7 @@ void unvme_cleanup()
 unvme_session_t* unvme_do_open(int pci, int nsid, int qcount, int qsize)
 {
     if (!unvme_dev.vfiodev) unvme_init(pci);
-    INFO("===\n%s %x: nsid=%d qc=%d qs=%d", __func__, pci, nsid, qcount, qsize);
+    INFO("%s %x: nsid=%d qc=%d qs=%d", __func__, pci, nsid, qcount, qsize);
     return unvme_session_create(nsid, qcount, qsize);
 }
 
@@ -411,7 +420,7 @@ unvme_session_t* unvme_do_open(int pci, int nsid, int qcount, int qsize)
  */
 int unvme_do_close(int sid)
 {
-    INFO("===\n%s %x: sid=%d", __func__, unvme_dev.vfiodev->pci, sid);
+    INFO("%s %x: sid=%d", __func__, unvme_dev.vfiodev->pci, sid);
     // note first session is admin
     unvme_session_t* ses = unvme_dev.ses->next;
     while (ses != unvme_dev.ses) {
@@ -423,7 +432,7 @@ int unvme_do_close(int sid)
         }
     }
     ses = unvme_dev.ses->prev;
-    INFO_FN("%x: last qid %d", unvme_dev.vfiodev->pci, ses->queues[ses->qcount-1].id);
+    DEBUG_FN("%x: last qid %d", unvme_dev.vfiodev->pci, ses->queues[ses->qcount-1].id);
     if (ses == ses->next) unvme_cleanup();
     return 0;
 }
@@ -492,6 +501,7 @@ static int unvme_complete_io(unvme_queue_t* ioq, int timeout)
     u64 endtsc = 0;
     do {
         cid = nvme_check_completion(ioq->nvq, &err);
+        if (err) return err;
         if (cid >= 0 || timeout == 0) break;
         if (endtsc == 0) endtsc = rdtsc() + timeout * rdtsc_second();
         else sched_yield();

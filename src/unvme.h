@@ -40,8 +40,8 @@
 #include <stdint.h>
 
 
-#ifndef _UNVME_TYPE
-#define _UNVME_TYPE                 ///< bit size data types
+#ifndef _U_TYPE
+#define _U_TYPE                     ///< bit size data types
 typedef int8_t          s8;         ///< 8-bit signed
 typedef int16_t         s16;        ///< 16-bit signed
 typedef int32_t         s32;        ///< 32-bit signed
@@ -50,7 +50,7 @@ typedef uint8_t         u8;         ///< 8-bit unsigned
 typedef uint16_t        u16;        ///< 16-bit unsigned
 typedef uint32_t        u32;        ///< 32-bit unsigned
 typedef uint64_t        u64;        ///< 64-bit unsigned
-#endif // _UNVME_TYPE
+#endif // _U_TYPE
 
 #define UNVME_TIMEOUT   60          ///< I/O timeout in seconds
 

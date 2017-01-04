@@ -3,6 +3,11 @@
 src/.model
 src/libunvme.a
 src/unvme
+test/unvme/*_test
+test/nvme/nvme_identify
+test/nvme/nvme_get_log_page
+test/out/
+ioengine/*_fio
 fio/t/axmap
 fio/t/fio-btrace2fio
 fio/t/fio-dedupe
@@ -12,5 +17,4 @@ fio/t/gen-rand
 fio/t/ieee754
 fio/t/lfsr-test
 fio/t/stest
-test/out/
 html/

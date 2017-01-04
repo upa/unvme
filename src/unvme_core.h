@@ -46,12 +46,6 @@
 #include "unvme.h"
 
 
-/// Log and print an unrecoverable error message and exit
-#define FATAL(fmt, arg...)  \
-            do { ERROR(fmt, ##arg); unvme_cleanup(); exit(1); } while (0)
-
-void unvme_cleanup();
-
 struct _unvme_session;
 struct _unvme_queue;
 

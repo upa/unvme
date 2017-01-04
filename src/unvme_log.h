@@ -106,7 +106,7 @@ static inline void* zalloc(int size)
     void* mem = calloc(1, size);
     if (!mem) {
         ERROR("calloc");
-        exit(1);
+        abort();
     }
     return mem;
 }
