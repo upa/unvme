@@ -3,7 +3,7 @@ UNVMe - A User Space NVMe Driver
 
 UNVMe is a user space NVMe driver developed at Micron Technology.
 
-The UNVMe source code, under the src directory, contains four independent modules:
+The UNVMe code under the src directory contains four independent modules:
 
     VFIO    -   VFIO supported device and I/O memory wrapper functions
                 (unvme_vfio.h unvme_vfio.c)
@@ -14,8 +14,8 @@ The UNVMe source code, under the src directory, contains four independent module
     Log     -   Simple logging supported functions
                 (unvme_log.h unvme_log.c)
 
-    UNVMe   -   User Space driver interface built on top of the other three modules
-                (unvme.h unvme.c unvme_core.h unvme_core.c)
+    UNVMe   -   User Space application interface built on top of the above
+                three modules (unvme.h unvme.c unvme_core.h unvme_core.c)
 
 
 The test/nvme directory contains a few examples of NVMe admin commands constructed
@@ -28,8 +28,8 @@ System Requirements
 ===================
 
 UNVMe depends on features provided by the VFIO module in the Linux kernel
-(introduced since 3.6).  UNVMe code has been built and tested with CentOS 6 and 7
-running on x86_64 CPU based systems.
+(introduced since 3.6).  UNVMe code has been built and tested with
+CentOS 6 and 7 running on x86_64 CPU based systems.
 
 UNVMe requires the following hardware and software support:
 
@@ -51,10 +51,14 @@ UNVMe requires the following hardware and software support:
                 check that /sys/kernel/iommu_groups directory is not empty but
                 contains other subdirectories (i.e. group numbers).
 
-                On CentOS 6, which comes with kernel version 2.6, the user must
-                compile and boot a newer kernel that has the VFIO module.
+                On CentOS 6, which comes with kernel version 2.6, the user
+                must compile and boot a newer kernel that has the VFIO module.
                 The user must also copy the header file from the kernel source
                 directory include/uapi/linux/vfio.h to /usr/include/linux.
+
+
+UNVMe requires root privilege and supports only one single process in
+accessing a given NVMe device.
 
 
 
@@ -68,7 +72,7 @@ To build and install, run:
 
 Prior to using the UNVMe driver, the script test/unvme-setup needs to be
 run once which will bind all (or a specified list of) NVMe devices in
-the system to be used with the UNVMe driver.
+the system to the UNVMe driver (instead of kernel space driver).
 
     $ test/unvme-setup help
 
@@ -80,8 +84,8 @@ For usage, run:
     Usage:
         unvme-setup                 # enable all NVMe devices for UNVMe
         unvme-setup [BB:DD.F]...    # enable specific NVMe devices for UNVMe
-        unvme-setup list            # list all NVMe devices mapping info
-        unvme-setup reset           # reset all NVMe devices to kernel driver
+        unvme-setup list            # list all NVMe devices binding info
+        unvme-setup reset           # reset all NVMe devices to system driver
 
 
 To run UNVMe basic test, invoke the script:
@@ -109,7 +113,7 @@ To run fio benchmark tests against UNVMe:
 
     4) Launch the test script:
     
-       $ test/unvme-benchmark PCINAME
+       $ test/unvme-benchmark DEVICE_NAME
 
        Note the benchmark test will, by default, run random read and write tests
        with queue count 1, 4, 8, 16 and queue depth of 1, 4, 8, 16, 32, 64.
@@ -118,14 +122,16 @@ To run fio benchmark tests against UNVMe:
 
        $ RAMPTIME=60 RUNTIME=120 QCOUNT="1 4" QDEPTH="4 8" test/unvme-benchmark 07:00.0
 
-       If the specified PCINAME argument begins with /dev/nvme, the test will assume
-       the SSD is bound to the kernel space driver and thus use the "libaio" engine.
-       Otherwise, if the PCINAME matches the device format BB:DD:F, the test will assume
-       the SSD is bound to UNVMe driver and thus will use the "ioengine/unvme_fio" engine.
+       If the specified DEVICE_NAME argument begins with /dev/nvme, the test
+       will assume the NVMe device is bound to the kernel space driver and
+       thus use the "libaio" engine.  Otherwise, if the DEVICE_NAME matches
+       the format BB:DD:F, the test will assume the device is bound to UNVMe
+       driver and thus will use the "ioengine/unvme_fio" engine.
        The benchmark results will be saved in test/out directory.
 
-       For comparison, unvme-benchmark should be run on the same device binding to the
-       kernel space driver as well as the user space UVNMe driver.  For example, run:
+       For comparison, unvme-benchmark should be run on the same device binding
+       to the kernel space driver as well as the user space UVNMe driver.
+       For example, run:
 
        $ test/unvme-setup
        $ test/unvme-benchmark 01:00.0
@@ -175,4 +181,10 @@ As defined in unvme.h, the following functions are supported:
 
 
 Note the default log filename is /dev/shm/unvme.log.
+
+A user space filesystem, namely UNFS, has also been developed at Micron
+to work with UNVMe driver.  Such available filesystem enables major
+applications such as MongoDB to be ported to work with UNVMe driver.
+See https://github.com/MicronSSD/unfs.git for details.
+
 
