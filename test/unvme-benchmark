@@ -1,10 +1,10 @@
 #!/bin/bash
-# This benchmark test supports 3 different drivers:  NVMe, UNVMe, and SPDK.
-# It detects the specified device name and determine which fio engine to use.
+# This script may be used to run fio UNVMe benchmarks.
+# It determines which fio engine to use based on the specified device name.
 #
 # Usage examples:
-#   % unvme-benchmark /dev/nvme0n1
-#   % unvme-benchmark 05:00.0
+#   % unvme-benchmark /dev/nvme0n1  # using kernel space NVMe driver
+#   % unvme-benchmark 05:00.0       # using user space UNVMe driver
 
 PROG=$(basename $0)
 USAGE="Usage: ${PROG} DEVICE_NAME"

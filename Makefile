@@ -39,7 +39,7 @@ all: $(SUBDIRS)
 $(SUBDIRS):
 	$(MAKE) -C $@
 
-install: $(SUBDIRS)
+install: uninstall all
 	mkdir -p $(INSTALLDIR)/include $(INSTALLDIR)/lib $(INSTALLDIR)/bin
 	/usr/bin/install -m644 src/unvme{,_log,_nvme,_vfio}.h $(INSTALLDIR)/include
 	/usr/bin/install -m644 src/libunvme.a $(INSTALLDIR)/lib
