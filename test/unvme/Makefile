@@ -29,13 +29,13 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
+include ../../Makefile.def
+
 TARGETS = unvme_sim_test unvme_api_test unvme_mts_test unvme_lat_test
 
 UNVME_SRC = ../../src
 
-COPT ?= -g
 CPPFLAGS += -I$(UNVME_SRC)
-CFLAGS += $(COPT) -Wall
 LDLIBS += $(UNVME_SRC)/libunvme.a -pthread -lrt
 
 OBJS = $(addsuffix .o, $(TARGETS))

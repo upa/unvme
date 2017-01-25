@@ -33,8 +33,6 @@ include ../Makefile.def
 
 TARGET := libunvme.a
 
-CFLAGS += $(COPT) -Wall -fPIC
-
 INCS := $(wildcard *.h)
 SRCS := $(wildcard *.c)
 OBJS := $(SRCS:.c=.o)

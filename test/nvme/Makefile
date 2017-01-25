@@ -29,13 +29,13 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
+include ../../Makefile.def
+
 TARGETS = nvme_identify nvme_get_log_page
 
 UNVME_SRC = ../../src
 
-COPT ?= -g
 CPPFLAGS += -I$(UNVME_SRC)
-CFLAGS += $(COPT) -Wall
 LDLIBS += $(UNVME_SRC)/libunvme.a -pthread -lrt
 
 OBJS = $(addsuffix .o, $(TARGETS))

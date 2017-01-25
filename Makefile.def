@@ -31,12 +31,13 @@
 
 SHELL := /bin/sh
 
-# Set the default optimization flag
-COPT ?= -O2
-
 # To turn on debug message logging
 #CPPFLAGS += -DUNVME_DEBUG
 
+# Default compilation flags
+CPPFLAGS += -D_GNU_SOURCE
+CFLAGS += -Wall -fPIC -O2
+
 # To build the ioengine modules, specify fio directory where the header files
-#FIO_DIR := /absolute/path/fio
+FIO_DIR := /work/unvme/fio
 

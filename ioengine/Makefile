@@ -32,7 +32,7 @@
 include ../Makefile.def
 
 ifneq ($(wildcard $(FIO_DIR)/fio.h),)
-	TARGETS := unvme_fio
+	TARGET := unvme_fio
 ifeq ($(shell grep -c io_ops_data $(FIO_DIR)/fio.h),0)
 	FIO_FLAGS := -Dio_ops_data="io_ops->data"
 endif
@@ -40,17 +40,15 @@ endif
 
 UNVME_SRC = ../src
 
-COPT ?= -O3
-CPPFLAGS += -D_GNU_SOURCE -I$(UNVME_SRC) -I$(FIO_DIR) $(FIO_FLAGS)
-CFLAGS += $(COPT) -Wall -fPIC
+CPPFLAGS += -I$(UNVME_SRC) -I$(FIO_DIR) $(FIO_FLAGS)
 LDFLAGS += -shared -rdynamic
-LDLIBS += $(UNVME_SRC)/libunvme.a -lpthread -lrt
+LDLIBS += -lpthread -lrt
 
-OBJS = $(addsuffix .o, $(TARGETS))
+OBJS = $(addsuffix .o, $(TARGET))
 
-all: $(TARGETS)
+all: $(TARGET)
 
-$(TARGETS): $(UNVME_SRC)/libunvme.a
+$(TARGET): $(UNVME_SRC)/libunvme.a
 
 lint: COPT = -D_FORTIFY_SOURCE=2 -DUNVME_DEBUG -O2
 lint: clean $(OBJS)
