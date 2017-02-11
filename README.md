@@ -35,6 +35,7 @@ UNVMe requires the following hardware and software support:
 
     VT-d    -   CPU must support VT-d (Virtualization Technology for Directed I/O).
                 Check <http://ark.intel.com/> for Intel product specifications.
+                VT-d setting may be found in the BIOS configuration.
 
     VFIO    -   Linux kernel 3.6 or later compiled with the following configurations:
 
@@ -137,6 +138,17 @@ To run fio benchmark tests against UNVMe:
        $ test/unvme-benchmark 01:00.0
        $ test/unvme-setup reset
        $ test/unvme-benchmark /dev/nvme0n1
+
+
+It should be noted that there are 2 additional UNVMe specific options
+associated with the FIO configuration file, namely nsid and maxjobs.
+By default, nsid is set to 1, so if the target namespace ID is not 1,
+then nsid must be explicitly set.  Regarding maxjobs, if there are multiple
+sectional jobs in the configuration file, the total number of jobs must be
+specified as maxjobs.  This maxjobs value is translated to the number of
+NVMe queues created where each queue supports one I/O thread or job.
+The total number of jobs will be limited to the number of I/O queues 
+supported by the NVMe target device.
 
 
 

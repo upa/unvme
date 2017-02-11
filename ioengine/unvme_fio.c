@@ -22,6 +22,7 @@
 typedef struct {
     void*               pad;
     unsigned int        nsid;
+    unsigned int        maxjobs;
 } unvme_options_t;
 
 typedef struct {
@@ -51,7 +52,7 @@ static int do_unvme_init(char* pciname, struct thread_data *td)
     if (!unvme.ns) {
         unvme_options_t* opt = td->eo;
         int nsid = opt->nsid ? opt->nsid : 1;
-        int qc = td->o.numjobs;
+        int qc = opt->maxjobs ? opt->maxjobs : td->o.numjobs;
         int qd = td->o.iodepth;
 
         if (pciname[2] == '.') pciname[2] = ':';
@@ -289,6 +290,16 @@ static struct fio_option fio_unvme_options[] = {
         .minval     = 1,
         .maxval     = 0xffff,
         .help       = "NVMe namespace id",
+        .category   = FIO_OPT_C_ENGINE,
+    },
+    {
+        .name       = "maxjobs",
+        .lname      = "Max number of jobs",
+        .type       = FIO_OPT_INT,
+        .off1       = offsetof(unvme_options_t, maxjobs),
+        .minval     = 1,
+        .maxval     = 0xffff,
+        .help       = "Max number of jobs mapped to number of NVMe queues",
         .category   = FIO_OPT_C_ENGINE,
     },
     {
