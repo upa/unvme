@@ -36,7 +36,7 @@ TARGETS = nvme_identify nvme_get_log_page
 UNVME_SRC = ../../src
 
 CPPFLAGS += -I$(UNVME_SRC)
-LDLIBS += $(UNVME_SRC)/libunvme.a -pthread -lrt
+LDLIBS += $(UNVME_SRC)/libunvme.a -lrt -lpthread
 
 OBJS = $(addsuffix .o, $(TARGETS))
 

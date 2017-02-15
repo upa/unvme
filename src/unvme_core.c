@@ -69,10 +69,7 @@
 /// @endcond
 
 /// Log and print an unrecoverable error message and exit
-#define FATAL(fmt, arg...)  \
-            do { ERROR(fmt, ##arg); unvme_cleanup(); abort(); } while (0)
-
-void unvme_cleanup();
+#define FATAL(fmt, arg...)  do { ERROR(fmt, ##arg); abort(); } while (0)
 
 
 // Global variables

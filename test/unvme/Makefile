@@ -36,7 +36,7 @@ TARGETS = unvme_sim_test unvme_api_test unvme_mts_test unvme_lat_test
 UNVME_SRC = ../../src
 
 CPPFLAGS += -I$(UNVME_SRC)
-LDLIBS += $(UNVME_SRC)/libunvme.a -pthread -lrt
+LDLIBS += $(UNVME_SRC)/libunvme.a -lrt -lpthread
 
 OBJS = $(addsuffix .o, $(TARGETS))
 

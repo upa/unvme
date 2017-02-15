@@ -208,7 +208,7 @@ int main(int argc, char* argv[])
          -n       nsid (default to 1)\n\
          -t       number of sessions (default 4)\n\
          -q       number of queues per session (default 6)\n\
-         -d       each queue size (default 500)\n\
+         -d       each queue size (default 100)\n\
          -m       maximum number of blocks per IO (default 2048)\n\
          pciname  PCI device name (as BB:DD.F format)\n";
 
