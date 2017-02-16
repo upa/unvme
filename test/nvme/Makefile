@@ -31,7 +31,7 @@
 
 include ../../Makefile.def
 
-TARGETS = nvme_identify nvme_get_log_page
+TARGETS = nvme_identify nvme_get_log_page nvme_get_features nvme_set_features
 
 UNVME_SRC = ../../src
 

@@ -51,8 +51,8 @@
 static char* pciname;           ///< PCI device name
 static int nsid = 1;            ///< namespace id
 static int numses = 4;          ///< number of thread sessions
-static int qcount = 6;          ///< number of queues per session to create
-static int qsize = 100;         ///< queue size
+static int qcount = 4;          ///< number of queues per session to create
+static int qsize = 64;          ///< queue size
 static int maxnlb = 2048;       ///< maximum number of blocks per IO
 static sem_t sm_ready;          ///< semaphore for ready
 static sem_t sm_start;          ///< semaphore for start
@@ -169,12 +169,14 @@ void* test_session(void* arg)
     int sesid = (long)arg;
     int sid = sesid + 1;
 
+    // all unvme_open sessions must complete before starting I/O threads
     printf("Session %d started\n", sid);
     const unvme_ns_t* ns = unvme_open(pciname, nsid, qcount, qsize);
     if (!ns) error(1, 0, "unvme_open %d failed", sid);
+    sem_post(&sm_ready);
+    sem_wait(&sm_start);
 
     u64 bpq = ns->blockcount / numses / qcount;
-
     pthread_t* qt = calloc(qcount, sizeof(pthread_t));
     ses_arg_t* sarg = calloc(qcount, sizeof(ses_arg_t));
 
@@ -206,9 +208,9 @@ int main(int argc, char* argv[])
     const char* usage =
 "Usage: %s [OPTION]... pciname\n\
          -n       nsid (default to 1)\n\
-         -t       number of sessions (default 4)\n\
-         -q       number of queues per session (default 6)\n\
-         -d       each queue size (default 100)\n\
+         -t       number of thread sessions (default 4)\n\
+         -q       number of queues per session (default 4)\n\
+         -d       each queue size (default 64)\n\
          -m       maximum number of blocks per IO (default 2048)\n\
          pciname  PCI device name (as BB:DD.F format)\n";
 
@@ -248,8 +250,11 @@ int main(int argc, char* argv[])
     printf("MULTI-SESSION TEST BEGIN\n");
     const unvme_ns_t* ns = unvme_open(pciname, nsid, qcount, qsize);
     if (!ns) error(1, 0, "unvme_open failed");
-    printf("nsid=%d ses=%d qc=%d qd=%d maxnlb=%d cap=%lx\n",
-           nsid, numses, qcount, qsize, maxnlb, ns->blockcount);
+    printf("nsid=%d ses=%d qc=%d qd=%d maxnlb=%d maxq=%d cap=%lx\n",
+           nsid, numses, qcount, qsize, maxnlb, ns->maxqcount, ns->blockcount);
+    if ((numses * qcount) > ns->maxqcount)
+        error(1, 0, "%d threads of %d queues exceeds max limit of %d queues",
+              numses, qcount, ns->maxqcount);
     if ((u64)(numses * qcount * qsize * maxnlb) > ns->blockcount)
         error(1, 0, "not enough disk space");
     unvme_close(ns);
@@ -261,7 +266,9 @@ int main(int argc, char* argv[])
 
     for (i = 0; i < numses; i++) {
         pthread_create(&st[i], 0, test_session, (void*)(long)i);
+        sem_wait(&sm_ready);
     }
+    for (i = 0; i < numses; i++) sem_post(&sm_start);
     for (i = 0; i < numses; i++) pthread_join(st[i], 0);
 
     sem_destroy(&sm_start);

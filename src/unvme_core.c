@@ -92,7 +92,8 @@ static void unvme_ns_init(unvme_session_t* ses, int nsid)
     vfio_dma_t* dma = vfio_dma_alloc(unvme_dev.vfiodev, ns->pagesize << 1);
     if (!dma) FATAL("vfio_dma_alloc");
     if (nvme_acmd_identify(unvme_dev.nvmedev, nsid, dma->addr,
-                        dma->addr + ns->pagesize)) FATAL("nvme_acmd_identify");
+                           dma->addr + ns->pagesize))
+        FATAL("nvme_acmd_identify");
 
     if (nsid == 0) {
         int i;
@@ -110,6 +111,12 @@ static void unvme_ns_init(unvme_session_t* ses, int nsid)
             for (i = 1; i < idc->mdts; i++) maxp *= 2;
             if (ns->maxppio > maxp) ns->maxppio = maxp;
         }
+
+        nvme_feature_num_queues_t nq;
+        if (nvme_acmd_get_features(unvme_dev.nvmedev, nsid,
+                                   NVME_FEATURE_NUM_QUEUES, 0, 0, (u32*)&nq))
+            FATAL("nvme_acmd_get_features");
+        ns->maxqcount = (nq.nsq < nq.ncq ? nq.nsq : nq.ncq) + 1;
     } else {
         memcpy(ns, &unvme_dev.ses->ns, sizeof(unvme_ns_t));
         nvme_identify_ns_t* idns = (nvme_identify_ns_t*)dma->buf;
@@ -220,7 +227,7 @@ static void unvme_ioq_create(unvme_session_t* ses, int sqi)
     ioq->nvq = nvme_create_ioq(unvme_dev.nvmedev, ioq->id, ses->qsize,
                                ioq->sqdma->buf, ioq->sqdma->addr,
                                ioq->cqdma->buf, ioq->cqdma->addr);
-    if (!ioq->nvq) FATAL("nvme_create_ioq");
+    if (!ioq->nvq) FATAL("nvme_create_ioq %d", ioq->id);
 
     unvme_dev.numioqs++;
 
@@ -321,6 +328,7 @@ static unvme_session_t* unvme_session_create(int nsid, int qcount, int qsize)
     } else {
         unvme_ns_init(ses, nsid);
         int i;
+        if (qcount == 0) qcount = ses->ns.maxqcount;
         for (i = 0; i < qcount; i++) unvme_ioq_create(ses, i);
         DEBUG_FN("%x: q=%d-%d bs=%d nb=%lu", unvme_dev.vfiodev->pci,
                  ses->id, ses->queues[qcount-1].id,

@@ -85,6 +85,21 @@ enum {
     NVME_ACMD_FW_DOWNLOAD   = 0x11,     ///< firmware image download
 };
 
+/// NVMe feature identifiers
+enum {
+    NVME_FEATURE_ARBITRATION = 0x1,     ///< arbitration
+    NVME_FEATURE_POWER_MGMT = 0x2,      ///< power management
+    NVME_FEATURE_LBA_RANGE = 0x3,       ///< LBA range type
+    NVME_FEATURE_TEMP_THRESHOLD = 0x4,  ///< temperature threshold
+    NVME_FEATURE_ERROR_RECOVERY = 0x5,  ///< error recovery
+    NVME_FEATURE_WRITE_CACHE = 0x6,     ///< volatile write cache
+    NVME_FEATURE_NUM_QUEUES = 0x7,      ///< number of queues
+    NVME_FEATURE_INT_COALESCING = 0x8,  ///< interrupt coalescing
+    NVME_FEATURE_INT_VECTOR = 0x9,      ///< interrupt vector config
+    NVME_FEATURE_WRITE_ATOMICITY = 0xA, ///< write atomicity
+    NVME_FEATURE_ASYNC_EVENT = 0xB,     ///< async event config
+};
+
 /// Version
 typedef union _nvme_version {
     u32                 val;            ///< whole value
@@ -361,6 +376,105 @@ typedef struct _nvme_log_page_fw {
     u8                      rsvd64[448]; ///< reserved (64-511)
 } nvme_log_page_fw_t;
 
+/// Admin feature:  Arbitration
+typedef struct _nvme_feature_arbitration {
+    u8                      ab: 3;      ///< arbitration burst
+    u8                      rsvd: 5;    ///< reserved
+    u8                      lpw;        ///< low priority weight
+    u8                      mpw;        ///< medium priority weight
+    u8                      hpw;        ///< high priority weight
+} nvme_feature_arbitration_t;
+
+/// Admin feature:  Power Management
+typedef struct _nvme_feature_power_mgmt {
+    u32                     ps: 5;      ///< power state
+    u32                     rsvd: 27;   ///< reserved
+} nvme_feature_power_mgmt_t;
+
+/// Admin feature:  LBA Range Type Data
+typedef struct _nvme_feature_lba_data {
+    struct {
+        u8                  type;       ///< type
+        u8                  attributes; ///< attributes
+        u8                  rsvd[14];   ///< reserved
+        u64                 slba;       ///< starting LBA
+        u64                 nlb;        ///< number of logical blocks
+        u8                  guid[16];   ///< unique id
+        u8                  rsvd48[16]; ///< reserved
+    } entry[64];                        ///< LBA data entry
+} nvme_feature_lba_data_t;
+
+/// Admin feature:  LBA Range Type
+typedef struct _nvme_feature_lba_range {
+    u32                     num: 6;     ///< number of LBA ranges
+    u32                     rsvd: 26;   ///< reserved
+} nvme_feature_lba_range_t;
+
+/// Admin feature:  Temperature Threshold
+typedef struct _nvme_feature_temp_threshold {
+    u16                     tmpth;      ///< temperature threshold
+    u16                     rsvd;       ///< reserved
+} nvme_feature_temp_threshold_t;
+
+/// Admin feature:  Error Recovery
+typedef struct _nvme_feature_error_recovery {
+    u16                     tler;       ///< time limited error recovery
+    u16                     rsvd;       ///< reserved
+} nvme_feature_error_recovery_t;
+
+/// Admin feature:  Volatile Write Cache
+typedef struct _nvme_feature_write_cache {
+    u32                     wce: 1;     ///< volatile write cache
+    u32                     rsvd: 31;   ///< reserved
+} nvme_feature_write_cache_t;
+
+/// Admin feature:  Number of Queues
+typedef struct _nvme_feature_num_queues {
+    u16                     nsq;        ///< numer of submission queues
+    u16                     ncq;        ///< numer of completion queues
+} nvme_feature_num_queues_t;
+
+/// Admin feature:  Interrupt Coalescing
+typedef struct _nvme_feature_int_coalescing {
+    u8                      thr;        ///< aggregation threshold
+    u8                      time;       ///< aggregation time
+    u16                     rsvd;       ///< reserved
+} nvme_feature_int_coalescing_t;
+
+/// Admin feature:  Interrupt Vector Configuration
+typedef struct _nvme_feature_int_vector {
+    u16                     iv;         ///< interrupt vector
+    u16                     cd: 1;      ///< coalescing disable
+    u16                     rsvd: 15;   ///< reserved
+} nvme_feature_int_vector_t;
+
+/// Admin feature:  Write Atomicity
+typedef struct _nvme_feature_write_atomicity {
+    u32                     dn: 1;      ///< disable normal
+    u32                     rsvd: 31;   ///< reserved
+} nvme_feature_write_atomicity_t;
+
+/// Admin feature:  Async Event Configuration
+typedef struct _nvme_feature_async_event {
+    u8                      smart;      ///< SMART / health critical warnings
+    u8                      rsvd[3];    ///< reserved
+} nvme_feature_async_event_t;
+
+/// Admin command:  Get Feature
+typedef struct _nvme_acmd_get_features {
+    nvme_command_common_t   common;     ///< common cdw 0
+    u8                      fid;        ///< feature id (cdw 10:0-7)
+    u8                      rsvd10[3];  ///< reserved (cdw 10:8-31)
+} nvme_acmd_get_features_t;
+
+/// Admin command:  Set Feature
+typedef struct _nvme_acmd_set_features {
+    nvme_command_common_t   common;     ///< common cdw 0
+    u8                      fid;        ///< feature id (cdw 10:0-7)
+    u8                      rsvd10[3];  ///< reserved (cdw 10:8-31)
+    u32                     val;        ///< cdw 11
+} nvme_acmd_set_features_t;
+
 /// Submission queue entry
 typedef union _nvme_sq_entry {
     nvme_command_rw_t       rw;         ///< read/write command
@@ -371,6 +485,8 @@ typedef union _nvme_sq_entry {
     nvme_acmd_delete_ioq_t  delete_ioq; ///< admin delete IO queue
     nvme_acmd_identify_t    identify;   ///< admin identify command
     nvme_acmd_get_log_page_t get_log_page; ///< get log page command
+    nvme_acmd_get_features_t get_features; ///< get feature
+    nvme_acmd_set_features_t set_features; ///< set feature
 } nvme_sq_entry_t;
 
 /// Completion queue entry
@@ -414,6 +530,7 @@ typedef struct _nvme_queue {
 typedef struct _nvme_device {
     nvme_controller_reg_t*  reg;        ///< register address map
     int                     dbstride;   ///< doorbell stride (in word size)
+    int                     maxqcount;  ///< max queue count
     int                     maxqsize;   ///< max queue size
     int                     pageshift;  ///< pagesize shift
     struct _nvme_queue      adminq;     ///< admin queue reference
@@ -432,8 +549,9 @@ nvme_queue_t* nvme_create_ioq(nvme_device_t* dev, int id, int qsize,
 int nvme_delete_ioq(nvme_queue_t* ioq);
 
 int nvme_acmd_identify(nvme_device_t* dev, int nsid, u64 prp1, u64 prp2);
-int nvme_acmd_get_log_page(nvme_device_t* dev, int nsid,
-                          int lid, int numd, u64 prp1, u64 prp2);
+int nvme_acmd_get_log_page(nvme_device_t* dev, int nsid, int lid, int numd, u64 prp1, u64 prp2);
+int nvme_acmd_get_features(nvme_device_t* dev, int nsid, int fid, u64 prp1, u64 prp2, u32* res);
+int nvme_acmd_set_features(nvme_device_t* dev, int nsid, int fid, u64 prp1, u64 prp2, u32* res);
 int nvme_acmd_create_cq(nvme_queue_t* ioq, u64 prp);
 int nvme_acmd_create_sq(nvme_queue_t* ioq, u64 prp);
 int nvme_acmd_delete_cq(nvme_queue_t* ioq);

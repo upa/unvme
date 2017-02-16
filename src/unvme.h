@@ -75,6 +75,7 @@ typedef struct _unvme_ns {
     u32                 maxbpio;    ///< max number of blocks per I/O
     u16                 maxiopq;    ///< max concurrent I/O per queue
     u16                 maxqsize;   ///< max queue size supported
+    u16                 maxqcount;  ///< max number of queues supported
     void*               ses;        ///< associated session
 } unvme_ns_t;
 

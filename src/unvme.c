@@ -61,8 +61,8 @@ int unvme_do_poll(unvme_desc_t* iod, int sec);
  */
 const unvme_ns_t* unvme_open(const char* pciname, int nsid, int qcount, int qsize)
 {
-    if (qcount < 1 || qsize < 2) {
-        ERROR("qcount must be > 0 and qsize must be > 1");
+    if (qcount < 0 || qsize < 2) {
+        ERROR("qcount must be >= 0 and qsize must be > 1");
         return NULL;
     }
 

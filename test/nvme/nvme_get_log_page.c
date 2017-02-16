@@ -31,7 +31,7 @@
 
 /**
  * @file
- * @brief Invoke NVMe identify command.
+ * @brief Invoke NVMe get log page command.
  */
 
 #include "nvme_common.c"

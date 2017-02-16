@@ -224,7 +224,7 @@ int nvme_wait_completion(nvme_queue_t* q, int cid, int timeout)
             if (ret != cid) {
                 ERROR("cid wait=%#x recv=%#x", cid, ret);
                 stat = -1;
-            } else ERROR("status %#x", stat);
+            }
             return stat;
         } else if (endtsc == 0) {
             endtsc = rdtsc() + timeout * rdtsc_second();
@@ -269,8 +269,8 @@ int nvme_acmd_identify(nvme_device_t* dev, int nsid, u64 prp1, u64 prp2)
  * Submit the command and wait for completion.
  * @param   dev         device context
  * @param   nsid        namespace id
- * @param   numd        number of dwords
  * @param   lid         log page id
+ * @param   numd        number of dwords
  * @param   prp1        PRP1 address
  * @param   prp2        PRP2 address
  * @return  completion status (0 if ok).
@@ -294,6 +294,75 @@ int nvme_acmd_get_log_page(nvme_device_t* dev, int nsid,
     DEBUG_FN("cid=%#x lid=%d", cid, lid);
     int err = nvme_submit_cmd(adminq);
     if (!err) err = nvme_wait_completion(adminq, cid, 30);
+    return err;
+}
+
+/**
+ * NVMe get features command.
+ * Submit the command and wait for completion.
+ * @param   dev         device context
+ * @param   nsid        namespace id
+ * @param   fid         feature id
+ * @param   prp1        PRP1 address
+ * @param   prp2        PRP2 address
+ * @param   res         dword 0 value returned
+ * @return  completion status (0 if ok).
+ */
+int nvme_acmd_get_features(nvme_device_t* dev, int nsid,
+                           int fid, u64 prp1, u64 prp2, u32* res)
+{
+    nvme_queue_t* adminq = &dev->adminq;
+    int cid = adminq->sq_tail;
+    nvme_acmd_get_features_t* cmd = &adminq->sq[cid].get_features;
+
+    memset(cmd, 0, sizeof (*cmd));
+    cmd->common.opc = NVME_ACMD_GET_FEATURES;
+    cmd->common.cid = cid;
+    cmd->common.nsid = nsid;
+    cmd->common.prp1 = prp1;
+    cmd->common.prp2 = prp2;
+    cmd->fid = fid;
+    *res = -1;
+
+    DEBUG_FN("cid=%#x fid=%d", cid, fid);
+    int err = nvme_submit_cmd(adminq);
+    if (!err) err = nvme_wait_completion(adminq, cid, 30);
+    if (!err) *res = adminq->cq[cid].cs;
+    return err;
+}
+
+/**
+ * NVMe set features command.
+ * Submit the command and wait for completion.
+ * @param   dev         device context
+ * @param   nsid        namespace id
+ * @param   fid         feature id
+ * @param   prp1        PRP1 address
+ * @param   prp2        PRP2 address
+ * @param   res         dword 0 value returned
+ * @return  completion status (0 if ok).
+ */
+int nvme_acmd_set_features(nvme_device_t* dev, int nsid,
+                           int fid, u64 prp1, u64 prp2, u32* res)
+{
+    nvme_queue_t* adminq = &dev->adminq;
+    int cid = adminq->sq_tail;
+    nvme_acmd_set_features_t* cmd = &adminq->sq[cid].set_features;
+
+    memset(cmd, 0, sizeof (*cmd));
+    cmd->common.opc = NVME_ACMD_SET_FEATURES;
+    cmd->common.cid = cid;
+    cmd->common.nsid = nsid;
+    cmd->common.prp1 = prp1;
+    cmd->common.prp2 = prp2;
+    cmd->fid = fid;
+    cmd->val = *res;
+    *res = -1;
+
+    DEBUG_FN("cid=%#x fid=%d", cid, fid);
+    int err = nvme_submit_cmd(adminq);
+    if (!err) err = nvme_wait_completion(adminq, cid, 30);
+    if (!err) *res = adminq->cq[cid].cs;
     return err;
 }
 

@@ -6,6 +6,8 @@ src/unvme
 test/unvme/*_test
 test/nvme/nvme_identify
 test/nvme/nvme_get_log_page
+test/nvme/nvme_get_features
+test/nvme/nvme_set_features
 test/out/
 ioengine/*_fio
 fio/t/axmap
