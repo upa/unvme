@@ -31,7 +31,7 @@
 
 /**
  * @file
- * @brief UNVMe logging support routines.
+ * @brief Logging support routines.
  */
 
 #include <stdarg.h>
@@ -43,51 +43,46 @@
 // Static global variables
 static FILE*                log_fp = NULL;  ///< log file pointer
 static int                  log_count = 0;  ///< log open count
-static pthread_spinlock_t   log_lock = 0;   ///< log locking
+static pthread_mutex_t      log_lock = PTHREAD_MUTEX_INITIALIZER; ///< log lock
 
 
 /**
- * Open log file.  Only one log file is supported and the first call
- * will create the log file by its specified name.  Subsequent call
- * to open a log will be counted but ignored.
+ * Open log file.  Only one log file is supported and thus only the first
+ * call * will create the log file by its specified name.  Subsequent calls
+ * will only be counted.
  * @param   name        log filename
  * @param   mode        open mode
  * @return  0 indicating 
  */
 int log_open(const char* name, const char* mode)
 {
+    pthread_mutex_lock(&log_lock);
     if (!log_fp) {
-        if (pthread_spin_init(&log_lock, PTHREAD_PROCESS_PRIVATE)) {
-            perror("pthread_spin_init");
-            return -1;
-        }
-
         log_fp = fopen(name, mode);
         if (!log_fp) {
             perror("log_open");
+            pthread_mutex_unlock(&log_lock);
             return -1;
         }
     }
-
     log_count++;
+    pthread_mutex_unlock(&log_lock);
     return 0;
 }
 
 /**
- * Close the log file (only on the last close).
+ * Close the log file (only the last close will effectively close the file).
  */
 void log_close()
 {
-    if ((log_count == 0) || (--log_count)) return;
-
-    if (log_fp && log_fp != stdout) {
-        fclose(log_fp);
-        log_fp = NULL;
+    pthread_mutex_lock(&log_lock);
+    if (log_count > 0) {
+        if ((--log_count == 0) && log_fp && log_fp != stdout) {
+            fclose(log_fp);
+            log_fp = NULL;
+        }
     }
-    if (log_lock) {
-        pthread_spin_destroy(&log_lock);
-        log_lock = 0;
-    }
+    pthread_mutex_unlock(&log_lock);
 }
 
 /**
@@ -100,8 +95,8 @@ void log_msg(int err, const char* fmt, ...)
 {
     va_list args;
 
+    pthread_mutex_lock(&log_lock);
     if (log_fp) {
-        pthread_spin_lock(&log_lock);
         va_start(args, fmt);
         if (err) {
             char s[256];
@@ -114,7 +109,6 @@ void log_msg(int err, const char* fmt, ...)
             fflush(log_fp);
         }
         va_end(args);
-        pthread_spin_unlock(&log_lock);
     } else {
         va_start(args, fmt);
         if (err) {
@@ -125,5 +119,6 @@ void log_msg(int err, const char* fmt, ...)
         }
         va_end(args);
     }
+    pthread_mutex_unlock(&log_lock);
 }
 

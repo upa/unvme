@@ -44,7 +44,7 @@ all: $(TARGETS)
 
 $(TARGETS): $(UNVME_SRC)/libunvme.a
 
-lint: COPT = -D_FORTIFY_SOURCE=2 -O3
+lint: CFLAGS = -Wall -D_FORTIFY_SOURCE=2 -DUNVME_DEBUG -O3
 lint: clean $(OBJS)
 	@$(RM) *.o
 

@@ -31,14 +31,13 @@
 
 /**
  * @file
- * @brief User space NVMe client header file.
+ * @brief UNVMe client header file.
  */
 
 #ifndef _UNVME_H
 #define _UNVME_H
 
 #include <stdint.h>
-
 
 #ifndef _U_TYPE
 #define _U_TYPE                     ///< bit size data types
@@ -52,30 +51,30 @@ typedef uint32_t        u32;        ///< 32-bit unsigned
 typedef uint64_t        u64;        ///< 64-bit unsigned
 #endif // _U_TYPE
 
-#define UNVME_TIMEOUT   60          ///< I/O timeout in seconds
-
+#define UNVME_TIMEOUT   60          ///< default I/O timeout in seconds
+#define UNVME_QSIZE     65          ///< default I/O queue size
 
 /// Namespace attributes structure
 typedef struct _unvme_ns {
+    u32                 pci;        ///< PCI device id
     u16                 id;         ///< namespace id
     u16                 vid;        ///< vendor id
-    u32                 sid;        ///< session id
-    u32                 qcount;     ///< number of I/O queues
-    u32                 qsize;      ///< I/O queue size
-    char                sn[20];     ///< device serial number
-    char                mn[40];     ///< namespace model number
-    char                fr[8];      ///< namespace firmware revision
+    char                mn[40];     ///< model number
+    char                sn[20];     ///< serial number
+    char                fr[8];      ///< firmware revision
+    u16                 maxqcount;  ///< max number of queues supported
+    u16                 maxqsize;   ///< max queue size supported
+    u16                 qcount;     ///< number of I/O queues
+    u16                 qsize;      ///< I/O queue size
     u64                 blockcount; ///< total number of logical blocks
-    u32                 pagesize;   ///< page size
-    u32                 blocksize;  ///< logical block size
+    u16                 pagesize;   ///< page size
+    u16                 blocksize;  ///< logical block size
     u16                 pageshift;  ///< page size shift value
     u16                 blockshift; ///< block size shift value
-    u32                 nbpp;       ///< number of blocks per page
-    u32                 maxppio;    ///< max number of pages per I/O
-    u32                 maxbpio;    ///< max number of blocks per I/O
-    u16                 maxiopq;    ///< max concurrent I/O per queue
-    u16                 maxqsize;   ///< max queue size supported
-    u16                 maxqcount;  ///< max number of queues supported
+    u16                 nbpp;       ///< number of blocks per page
+    u16                 maxppio;    ///< max number of pages per I/O
+    u16                 maxbpio;    ///< max number of blocks per I/O
+    u16                 maxiopq;    ///< max number of I/O submissions per queue
     void*               ses;        ///< associated session
 } unvme_ns_t;
 
@@ -83,7 +82,8 @@ typedef struct _unvme_ns {
 typedef void*           unvme_iod_t;
 
 // Export functions
-const unvme_ns_t* unvme_open(const char* pciname, int nsid, int qcount, int qsize);
+const unvme_ns_t* unvme_open(const char* pciname, int nsid);
+const unvme_ns_t* unvme_openq(const char* pciname, int nsid, int qcount, int qsize);
 int unvme_close(const unvme_ns_t* ns);
 
 void* unvme_alloc(const unvme_ns_t* ns, u64 size);

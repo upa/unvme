@@ -31,7 +31,8 @@
 
 include ../../Makefile.def
 
-TARGETS = unvme_sim_test unvme_api_test unvme_mts_test unvme_lat_test
+TARGETS = unvme_sim_test unvme_api_test unvme_mts_test unvme_lat_test \
+          unvme_mcd_test
 
 UNVME_SRC = ../../src
 
@@ -44,7 +45,7 @@ all: $(TARGETS)
 
 $(TARGETS): $(UNVME_SRC)/libunvme.a
 
-lint: COPT = -D_FORTIFY_SOURCE=2 -O3
+lint: CFLAGS = -Wall -D_FORTIFY_SOURCE=2 -DUNVME_DEBUG -O3
 lint: clean $(OBJS)
 	@$(RM) *.o
 

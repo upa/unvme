@@ -16,13 +16,11 @@
 #include "fio.h"
 #include "optgroup.h"       // since fio 2.4
 
-#define DEBUG(fmt, arg...)  //fprintf(stderr, "#" fmt "\n", ##arg)
-#define TDEBUG(fmt, arg...) DEBUG("%s.%d " fmt, __func__, td->thread_number, ##arg)
+#define TDEBUG(fmt, arg...) //fprintf(stderr, "#%s.%d " fmt "\n", __func__, td->thread_number, ##arg)
 
 typedef struct {
     void*               pad;
     unsigned int        nsid;
-    unsigned int        maxjobs;
 } unvme_options_t;
 
 typedef struct {
@@ -35,6 +33,7 @@ typedef struct {
     pthread_mutex_t     mutex;
     const unvme_ns_t*   ns;
     int                 active;
+    int                 ncpus;
 } unvme_context_t;
 
 
@@ -47,25 +46,41 @@ static unvme_context_t  unvme = { .mutex = PTHREAD_MUTEX_INITIALIZER };
  */
 static int do_unvme_init(char* pciname, struct thread_data *td)
 {
+    TDEBUG("numjobs=%d iodepth=%d", td->o.numjobs, td->o.iodepth);
+
     pthread_mutex_lock(&unvme.mutex);
     unvme.active++;
+
     if (!unvme.ns) {
         unvme_options_t* opt = td->eo;
         int nsid = opt->nsid ? opt->nsid : 1;
-        int qc = opt->maxjobs ? opt->maxjobs : td->o.numjobs;
-        int qd = td->o.iodepth;
 
         if (pciname[2] == '.') pciname[2] = ':';
-        unvme.ns = unvme_open(pciname, nsid, qc, qd + 1);
-        if (unvme.ns) {
-            DEBUG("%s unvme_open %s nsid=%d q=%dx%d",
-                  __func__, pciname, nsid, qc, qd);
-        } else {
-            error(0, 0, "unvme_open %s failed", pciname);
-            pthread_mutex_unlock(&unvme.mutex);
-            return 1;
-        }
+        unvme.ns = unvme_open(pciname, nsid);
+        if (!unvme.ns) error(1, 0, "unvme_open %s failed", pciname);
+
+        unvme.ncpus = sysconf(_SC_NPROCESSORS_ONLN);
+        TDEBUG("unvme_open %s nsid=%d q=%dx%d ncpus=%d",
+               pciname, nsid, unvme.ns->qcount, unvme.ns->qsize, unvme.ncpus);
     }
+
+    if (td->thread_number > unvme.ns->qcount ||
+        td->o.iodepth >= unvme.ns->qsize) {
+        error(1, 0, "thread %d iodepth %d exceeds UNVMe queue limit %dx%d",
+             td->thread_number, td->o.iodepth, unvme.ns->qcount, unvme.ns->qsize); 
+    }
+
+#if 0
+    // bind each thread to a CPU
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    int cpu = td->thread_number % unvme.ncpus;
+    CPU_SET(cpu, &cpuset);
+    if (pthread_setaffinity_np(pthread_self(), sizeof(cpuset), &cpuset))
+        error(1, errno, "pthread_setaffinity_np thread %d to CPU %d",
+                        td->thread_number, cpu);
+#endif
+
     pthread_mutex_unlock(&unvme.mutex);
     return 0;
 }
@@ -237,11 +252,13 @@ static void fio_unvme_cleanup(struct thread_data *td)
 
     pthread_mutex_lock(&unvme.mutex);
     TDEBUG("active=%d", unvme.active);
+
     if (--unvme.active == 0 && unvme.ns) {
-        DEBUG("%s unvme_close", __func__);
+        TDEBUG("unvme_close");
         unvme_close(unvme.ns);
         unvme.ns = NULL;
     }
+
     pthread_mutex_unlock(&unvme.mutex);
 }
 
@@ -268,10 +285,7 @@ static int fio_unvme_get_file_size(struct thread_data *td, struct fio_file *f)
 {
     TDEBUG("file=%s", f->file_name);
     if (!fio_file_size_known(f)) {
-        if (do_unvme_init(f->file_name, td)) {
-            error(0, 0, "%s do_unvme_init", __func__);
-            return 1;
-        }
+        do_unvme_init(f->file_name, td);
         f->filetype = FIO_TYPE_CHAR;
         f->real_file_size = unvme.ns->blockcount * unvme.ns->blocksize;
         fio_file_set_size_known(f);
@@ -290,16 +304,6 @@ static struct fio_option fio_unvme_options[] = {
         .minval     = 1,
         .maxval     = 0xffff,
         .help       = "NVMe namespace id",
-        .category   = FIO_OPT_C_ENGINE,
-    },
-    {
-        .name       = "maxjobs",
-        .lname      = "Max number of jobs",
-        .type       = FIO_OPT_INT,
-        .off1       = offsetof(unvme_options_t, maxjobs),
-        .minval     = 1,
-        .maxval     = 0xffff,
-        .help       = "Max number of jobs mapped to number of NVMe queues",
         .category   = FIO_OPT_C_ENGINE,
     },
     {

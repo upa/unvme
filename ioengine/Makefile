@@ -31,16 +31,16 @@
 
 include ../Makefile.def
 
-ifneq ($(wildcard $(FIO_DIR)/fio.h),)
+ifneq ($(wildcard $(FIODIR)/fio.h),)
 	TARGET := unvme_fio
-ifeq ($(shell grep -c io_ops_data $(FIO_DIR)/fio.h),0)
-	FIO_FLAGS := -Dio_ops_data="io_ops->data"
+ifeq ($(shell grep -c io_ops_data $(FIODIR)/fio.h),0)
+	CPPFLAGS += -Dio_ops_data="io_ops->data"
 endif
 endif
 
 UNVME_SRC = ../src
 
-CPPFLAGS += -I$(UNVME_SRC) -I$(FIO_DIR) $(FIO_FLAGS)
+CPPFLAGS += -I$(UNVME_SRC) -I$(FIODIR)
 LDFLAGS += -shared -rdynamic
 LDLIBS += -lpthread -lrt
 
@@ -50,7 +50,7 @@ all: $(TARGET)
 
 $(TARGET): $(UNVME_SRC)/libunvme.a
 
-lint: COPT = -D_FORTIFY_SOURCE=2 -DUNVME_DEBUG -O2
+lint: CFLAGS = -Wall -D_FORTIFY_SOURCE=2 -DUNVME_DEBUG -O3
 lint: clean $(OBJS)
 	@$(RM) *.o
 

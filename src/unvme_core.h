@@ -31,7 +31,7 @@
 
 /**
  * @file
- * @brief UNVMe header file.
+ * @brief uNVMe core header file.
  */
 
 #ifndef _UNVME_CORE_H
@@ -39,77 +39,81 @@
 
 #include <sys/types.h>
 
-#include "rdtsc.h"
 #include "unvme_log.h"
 #include "unvme_vfio.h"
 #include "unvme_nvme.h"
 #include "unvme.h"
 
 
-struct _unvme_session;
-struct _unvme_queue;
+/// Simple read write lock
+typedef int unvme_lock_t;
 
-/// IO memory allocation tracker per session
+/// IO memory allocation tracking info
 typedef struct _unvme_iomem {
-    pthread_spinlock_t      lock;       ///< lock to access memory
     vfio_dma_t**            map;        ///< dynamic array of allocated memory
     int                     size;       ///< array size
     int                     count;      ///< array count
+    unvme_lock_t            lock;       ///< map access lock
 } unvme_iomem_t;
 
 /// IO descriptor
 typedef struct _unvme_desc {
+    struct _unvme_desc*     prev;       ///< previous descriptor node
+    struct _unvme_desc*     next;       ///< next descriptor node
+    struct _unvme_ioq*      ioq;        ///< IO queue context owner
     u32                     id;         ///< descriptor id
     u32                     nlb;        ///< number of blocks
     u64                     slba;       ///< starting lba
     void*                   buf;        ///< buffer
     int                     opc;        ///< op code
     int                     error;      ///< error status
-    struct _unvme_desc*     prev;       ///< previous descriptor node
-    struct _unvme_desc*     next;       ///< next descriptor node
-    struct _unvme_queue*    ioq;        ///< queue owner
     int                     cidcount;   ///< number of pending cids
     u64                     cidmask[];  ///< cid pending bit mask
 } unvme_desc_t;
 
-/// queue context
-typedef struct _unvme_queue {
-    struct _unvme_session*  ses;        ///< session reference
-    nvme_queue_t*           nvq;        ///< NVMe associated queue
-    vfio_dma_t*             sqdma;      ///< submission queue allocation
-    vfio_dma_t*             cqdma;      ///< completion queue allocation
-    vfio_dma_t*             prplist;    ///< PRP shared list
-    int                     prpsize;    ///< PRP size per queue entry
-    u16                     id;         ///< NVMe queue id
+/// IO queue entry
+typedef struct _unvme_ioq {
+    nvme_queue_t            nvmeq;      ///< NVMe associated queue
+    vfio_dma_t*             sqdma;      ///< submission queue mem
+    vfio_dma_t*             cqdma;      ///< completion queue mem
+    vfio_dma_t*             prplist;    ///< PRP list
     u16                     cid;        ///< next cid to check and use
     int                     cidcount;   ///< number of pending cids
     int                     desccount;  ///< number of pending descriptors
+    int                     masksize;   ///< bit mask size to allocate
     u64*                    cidmask;    ///< cid pending bit mask
     unvme_desc_t*           desclist;   ///< use descriptor list
     unvme_desc_t*           descfree;   ///< free descriptor list
     unvme_desc_t*           descnext;   ///< next pending descriptor to process
-} unvme_queue_t;
+} unvme_ioq_t;
 
-/// open session
+/// Device context
+typedef struct _unvme_device {
+    vfio_device_t           vfiodev;    ///< VFIO device
+    nvme_device_t           nvmedev;    ///< NVMe device
+    vfio_dma_t*             asqdma;     ///< admin submission queue mem
+    vfio_dma_t*             acqdma;     ///< admin completion queue mem
+    unvme_iomem_t           iomem;      ///< IO memory tracker
+    unvme_ns_t              ns;         ///< controller namespace (id=0)
+    int                     nscount;    ///< number of namespaces available
+    int                     refcount;   ///< reference count
+    unvme_ioq_t*            ioqs;       ///< pointer to IO queues
+} unvme_device_t;
+
+/// Session context
 typedef struct _unvme_session {
-    unvme_ns_t              ns;         ///< namespace info
-    int                     id;         ///< session id (same as queues[0] id)
-    int                     qcount;     ///< number of queues
-    int                     qsize;      ///< queue size
-    int                     masksize;   ///< bit mask size
-    unvme_queue_t*          queues;     ///< array of queues
-    unvme_iomem_t           iomem;      ///< IO allocated memory info
-    struct _unvme_session*  prev;       ///< previous session node
-    struct _unvme_session*  next;       ///< next session node
+    struct _unvme_session*  prev;       ///< previous device ndoe
+    struct _unvme_session*  next;       ///< next device ndoe
+    unvme_device_t*         dev;        ///< device context
+    unvme_ns_t              ns;         ///< instance namespace
 } unvme_session_t;
 
-/// device context
-typedef struct _unvme_device {
-    vfio_device_t*          vfiodev;    ///< vfio device
-    nvme_device_t*          nvmedev;    ///< nvme device
-    unvme_session_t*        ses;        ///< session list
-    int                     numioqs;    ///< total number of IO queues
-} unvme_device_t;
+unvme_ns_t* unvme_do_open(int pci, int nsid, int qcount, int qsize);
+int unvme_do_close(const unvme_ns_t* ns);
+void* unvme_do_alloc(const unvme_ns_t* ns, u64 size);
+int unvme_do_free(const unvme_ns_t* ses, void* buf);
+int unvme_do_poll(unvme_desc_t* desc, int sec);
+unvme_desc_t* unvme_rw(const unvme_ns_t* ns, int qid, int opc, void* buf, u64 slba, u32 nlb);
 
 #endif  // _UNVME_CORE_H
 

@@ -46,9 +46,9 @@ install: uninstall all
 	/usr/bin/install -m755 test/unvme-setup $(INSTALLDIR)/bin
 
 uninstall:
-	$(RM) $(INSTALLDIR)/include/unvme{,_log,_nvme,_vfio}.h \
-	      $(INSTALLDIR)/lib/libunvme.a \
-	      $(INSTALLDIR)/bin/unvme-setup
+	$(RM) $(INSTALLDIR)/include/unvme* \
+	      $(INSTALLDIR)/lib/libunvme* \
+	      $(INSTALLDIR)/bin/unvme*
 
 lint:
 	@(for d in $(SUBDIRS); do $(MAKE) -C $$d lint; done)

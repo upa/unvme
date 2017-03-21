@@ -2,7 +2,7 @@
 *.*~
 src/.model
 src/libunvme.a
-src/unvme
+src/unvmed
 test/unvme/*_test
 test/nvme/nvme_identify
 test/nvme/nvme_get_log_page

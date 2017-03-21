@@ -3,41 +3,45 @@ UNVMe - A User Space NVMe Driver
 
 UNVMe is a user space NVMe driver developed at Micron Technology.
 
-The UNVMe code under the src directory contains four independent modules:
+The driver in this model is implemented as a library (libunvme.a) that
+applications can be linked with.  Upon start, an application will first
+initialize the NVMe device(s) and then can perform I/O directly.
 
-    VFIO    -   VFIO supported device and I/O memory wrapper functions
-                (unvme_vfio.h unvme_vfio.c)
+Note that an application can access multiple devices simultaneously, but 
+a device can only be accessed by one application at any given time.
+Device name is to be specified in PCI format, e.g. 0a:00.0.
 
-    NVMe    -   NVMe supported functions
-                (unvme_nvme.h unvme_nvme.c)
-
-    Log     -   Simple logging supported functions
-                (unvme_log.h unvme_log.c)
-
-    UNVMe   -   User Space application interface built on top of the above
-                three modules (unvme.h unvme.c unvme_core.h unvme_core.c)
+User space driver, in general, is a specially customized solution.
+Applications must use the provided APIs to access the device instead of
+the system provided POSIX APIs.
 
 
-The test/nvme directory contains a few examples of NVMe admin commands constructed
-using the VFIO, NVMe, and Log modules (without depending on the UNVMe module).
-The user can build more NVMe admin commands based on those examples.
+A design note:  UNVMe is designed modularly with independent components
+including VFIO (unvme_vfio.c) and NVME (unvme_nvme.c) supported functions,
+where the driver library itself is built on top of those modules.
+The test commands under test/nvme are built on those modules without
+dependency on the UNVMe driver and library.  They are served as examples
+for building other NVMe admin commands.  The tests under test/unvme can
+serve as examples for developing applications using UNVMe library.
+
 
 
 
 System Requirements
 ===================
 
-UNVMe depends on features provided by the VFIO module in the Linux kernel
-(introduced since 3.6).  UNVMe code has been built and tested with
-CentOS 6 and 7 running on x86_64 CPU based systems.
+UNVMe has a dependency on features provided by the VFIO module in the Linux
+kernel (introduced since 3.6).  UNVMe code has been built and tested only
+with CentOS 6 and 7 running on x86_64 CPU based systems.
 
 UNVMe requires the following hardware and software support:
 
     VT-d    -   CPU must support VT-d (Virtualization Technology for Directed I/O).
                 Check <http://ark.intel.com/> for Intel product specifications.
-                VT-d setting may be found in the BIOS configuration.
+                VT-d setting is normally found in the BIOS configuration.
 
-    VFIO    -   Linux kernel 3.6 or later compiled with the following configurations:
+    VFIO    -   Linux OS must have kernel 3.6 or later compiled with the
+                following configurations:
 
                     CONFIG_IOMMU_API=y
                     CONFIG_IOMMU_SUPPORT=y
@@ -52,46 +56,51 @@ UNVMe requires the following hardware and software support:
                 check that /sys/kernel/iommu_groups directory is not empty but
                 contains other subdirectories (i.e. group numbers).
 
-                On CentOS 6, which comes with kernel version 2.6, the user
-                must compile and boot a newer kernel that has the VFIO module.
-                The user must also copy the header file from the kernel source
-                directory include/uapi/linux/vfio.h to /usr/include/linux.
+On CentOS 6, which comes with kernel version 2.x (i.e. prior to 3.6),
+the user must compile and boot a newer kernel that has the VFIO module.
+The user must also copy the header file from the kernel source directory
+include/uapi/linux/vfio.h to /usr/include/linux if that is missing.
 
-
-UNVMe requires root privilege and supports only one single process in
-accessing a given NVMe device.
+UNVMe requires root privilege to access a device.
 
 
 
-Build and Test
-==============
+Build, Run, and Test
+====================
 
-To build and install, run:
+To install the driver and library, run:
 
     $ make install
 
 
-Prior to using the UNVMe driver, the script test/unvme-setup needs to be
-run once which will bind all (or a specified list of) NVMe devices in
-the system to the UNVMe driver (instead of kernel space driver).
+To set up for UNVMe driver usage (once before running applications), run:
 
-    $ test/unvme-setup help
+    $ unvme-setup bind
 
-
-For usage, run:
-
-    $ test/unvme-setup help
-
-    Usage:
-        unvme-setup                 # enable all NVMe devices for UNVMe
-        unvme-setup [BB:DD.F]...    # enable specific NVMe devices for UNVMe
-        unvme-setup list            # list all NVMe devices binding info
-        unvme-setup reset           # reset all NVMe devices to system driver
+    By default, all NVMe devices found in the system will be bound to the
+    VFIO driver enabling them for UNVMe usage.  Specific PCI device(s)
+    may also be specified for binding.
 
 
-To run UNVMe basic test, invoke the script:
+To reset device(s) to the NVMe kernel space driver, run:
 
-    $ test/unvme-test PCINAME       # PCINAME as 01:00.0
+    $ unvme-setup reset
+
+
+For usage help, invoke unvme-setup without argument.
+
+
+To run UNVMe tests, specify the device(s) with command:
+
+    $ test/unvme-test 0a:00.0 0b:00.0
+
+
+Commands under test/nvme may also be invoked individually, e.g.:
+
+    $ test/nvme/nvme_identify 0a:00.0
+    $ test/nvme/nvme_get_features 0a:00.0
+    $ test/nvme/nvme_get_log_page 0a:00.0 1 2
+    ...
 
 
 
@@ -100,103 +109,86 @@ I/O Benchmark Tests
 
 To run fio benchmark tests against UNVMe:
 
-    1) Compile the fio source code (available on https://github.com/axboe/fio).
+    1) Download and compile the fio source code (available on https://github.com/axboe/fio).
 
-    2) Edit Makefile.def and set FIO_DIR to the compiled fio source code.
-       Setting FIO_DIR will enable ioengine/unvme_fio to be built.
 
-    3) Recompile the UNVMe code to include fio engine code, run:
+    2) Edit Makefile.def and set FIODIR to the compiled fio source directory.
+
+
+    3) Rerun make to include building the fio engine, since setting FIODIR
+       will enable ioengine/unvme_fio to be built.
     
        $ make
 
-       Note that the unvme_fio.c engine has been verified to work with the fio
-       versions 2.7 through 2.14 (as fio source code is constantly changing).
+       Note that the fio source code is constantly changing, and unvme_fio.c
+       has been verified to work with the fio versions 2.7 through 2.14
 
-    4) Launch the test script:
+
+    4) Set up for UNVMe driver (if not already):
+
+       $ unvme-setup bind
+
+
+    5) Launch the test script:
     
-       $ test/unvme-benchmark DEVICE_NAME
+       $ test/unvme-benchmark DEVICENAME
 
-       Note the benchmark test will, by default, run random read and write tests
-       with queue count 1, 4, 8, 16 and queue depth of 1, 4, 8, 16, 32, 64.
-       Each test will be run for 7 minutes which includes a 2-minute ramp time.
+       Note the benchmark test, by default, will run random write and read
+       tests with 1, 4, 8, and 16 threads, and io depth of 1, 4, 8, and 16.
+       Each test will be run for 120 seconds after a ramp time of 60 seconds.
        These default settings can be overridden from the shell command line, e.g.:
 
-       $ RAMPTIME=60 RUNTIME=120 QCOUNT="1 4" QDEPTH="4 8" test/unvme-benchmark 07:00.0
-
-       If the specified DEVICE_NAME argument begins with /dev/nvme, the test
-       will assume the NVMe device is bound to the kernel space driver and
-       thus use the "libaio" engine.  Otherwise, if the DEVICE_NAME matches
-       the format BB:DD:F, the test will assume the device is bound to UNVMe
-       driver and thus will use the "ioengine/unvme_fio" engine.
-       The benchmark results will be saved in test/out directory.
-
-       For comparison, unvme-benchmark should be run on the same device binding
-       to the kernel space driver as well as the user space UVNMe driver.
-       For example, run:
-
-       $ test/unvme-setup
-       $ test/unvme-benchmark 01:00.0
-       $ test/unvme-setup reset
-       $ test/unvme-benchmark /dev/nvme0n1
+       $ RAMPTIME=10 RUNTIME=20 NUMJOBS="1 4" IODEPTH="4 8" test/unvme-benchmark 0a:00.0
 
 
-It should be noted that there are 2 additional UNVMe specific options
-associated with the FIO configuration file, namely nsid and maxjobs.
-By default, nsid is set to 1, so if the target namespace ID is not 1,
-then nsid must be explicitly set.  Regarding maxjobs, if there are multiple
-sectional jobs in the configuration file, the total number of jobs must be
-specified as maxjobs.  This maxjobs value is translated to the number of
-NVMe queues created where each queue supports one I/O thread or job.
-The total number of jobs will be limited to the number of I/O queues 
-supported by the NVMe target device.
+To run the same tests against the kernel space driver:
+
+    $ unvme-setup reset
+
+    $ test/unvme-benchmark /dev/nvme0n1
+
+
+All the FIO results, by default, will be stored in test/out directory.
 
 
 
-Programming Interfaces
-======================
+Application Programming Interfaces
+==================================
 
 The UNVMe APIs are designed with application ease of use in mind.
 As defined in unvme.h, the following functions are supported:
 
     unvme_open()    -   This function must be invoked first to establish a
-                        connection to the specified PCI device (e.g. 07:00.0).
-                        The qcount and qsize parameters provide the
-                        application the ability to adjust its performance
-                        based on the device characteristics.  The maximum
-                        number of queues is limited by the device support.
+                        connection to the specified PCI device.
 
     unvme_close()   -   Close a device connection.
 
-    unvme_alloc()   -   Allocate an I/O memory buffer of a given size.
+    unvme_alloc()   -   Allocate an I/O buffer.
 
-    unvme_free()    -   Free the allocated buffer.
-
+    unvme_free()    -   Free the allocated I/O buffer.
 
     unvme_write()   -   Write the specified number of blocks (nlb) to the
                         device starting at logical block address (slba).
-                        The buffer must be acquired from unvme_alloc()
-                        specified in 512-byte offset granularity.  The qid
-                        (range from 0 to qcount-1) may be used for thread
-                        safety.  Each queue must only be accessed by a
-                        single thread at any one time.
+                        The buffer must be acquired from unvme_alloc().
+                        The qid (range from 0 to 1 less than the number of
+                        queues supported by the device) may be used for
+                        thread safe I/O operations.  Each queue must only
+                        be accessed by a one thread at any one time.
 
-    unvme_read()    -   Read from the device (like unvme_write).
-
+    unvme_read()    -   Read from the device (i.e. like unvme_write).
 
     unvme_awrite()  -   Send a write command to the device asynchronously
                         and return immediately.  The returned descriptor
-                        may be used to poll for completion.
+                        is used via apoll() to poll for completion.
 
-    unvme_aread()   -   Send an asynchronous read (like unvme_awrite).
+    unvme_aread()   -   Send an asynchronous read (i.e. like unvme_awrite).
 
     unvme_apoll()   -   Poll an asynchronous read/write for completion.
 
 
-Note the default log filename is /dev/shm/unvme.log.
 
-A user space filesystem, namely UNFS, has also been developed at Micron
-to work with UNVMe driver.  Such available filesystem enables major
-applications such as MongoDB to be ported to work with UNVMe driver.
+Note that a user space filesystem, namely UNFS, has also been developed
+at Micron to work with the UNVMe driver.  Such available filesystem enables
+major applications like MongoDB to be ported to run on UNVMe driver.
 See https://github.com/MicronSSD/unfs.git for details.
-
 

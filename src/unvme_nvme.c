@@ -75,36 +75,6 @@ static inline void w64(nvme_device_t* dev, u64* addr, u64 val)
 
 
 /**
- * Create an NVMe device context and map the controller register.
- * @param   mapfd       file descriptor for register mapping
- * @return  device context or NULL if failure.
- */
-nvme_device_t* nvme_create(int mapfd)
-{
-    nvme_device_t* dev = zalloc(sizeof(*dev));
-
-    dev->reg = mmap(0, sizeof(nvme_controller_reg_t), PROT_READ|PROT_WRITE,
-                    MAP_SHARED|MAP_LOCKED, mapfd, 0);
-    if (dev->reg == MAP_FAILED) {
-        ERROR("mmap errno %d", errno);
-        return NULL;
-    }
-    return dev;
-}
-
-/**
- * Delete an NVMe device context
- * @param   dev         device context
- */
-void nvme_delete(nvme_device_t* dev)
-{
-    if (munmap(dev->reg, sizeof(nvme_controller_reg_t))) {
-        ERROR("munmap errno %d", errno);
-    }
-    free(dev);
-}
-
-/**
  * Wait for controller enabled/disabled state.
  * @param   dev         device context
  * @param   ready       ready state (enabled/disabled)
@@ -112,12 +82,8 @@ void nvme_delete(nvme_device_t* dev)
  */
 static int nvme_ctlr_wait_ready(nvme_device_t* dev, int ready)
 {
-    nvme_controller_cap_t cap;
-    cap.val = r64(dev, &dev->reg->cap.val);
-    int timeout = cap.to; // in 500ms unit
-
     int i;
-    for (i = 0; i < timeout; i++) {
+    for (i = 0; i < dev->timeout; i++) {
         usleep(500000);
         nvme_controller_status_t csts;
         csts.val = r32(dev, &dev->reg->csts.val);
@@ -260,7 +226,7 @@ int nvme_acmd_identify(nvme_device_t* dev, int nsid, u64 prp1, u64 prp2)
 
     DEBUG_FN("cid=%#x nsid=%d", cid, nsid);
     int err = nvme_submit_cmd(adminq);
-    if (!err) err = nvme_wait_completion(adminq, cid, 30);
+    if (!err) err = nvme_wait_completion(adminq, cid, 10);
     return err;
 }
 
@@ -293,7 +259,8 @@ int nvme_acmd_get_log_page(nvme_device_t* dev, int nsid,
 
     DEBUG_FN("cid=%#x lid=%d", cid, lid);
     int err = nvme_submit_cmd(adminq);
-    if (!err) err = nvme_wait_completion(adminq, cid, 30);
+    if (!err) err = nvme_wait_completion(adminq, cid, 10);
+    if (err) ERROR();
     return err;
 }
 
@@ -326,8 +293,9 @@ int nvme_acmd_get_features(nvme_device_t* dev, int nsid,
 
     DEBUG_FN("cid=%#x fid=%d", cid, fid);
     int err = nvme_submit_cmd(adminq);
-    if (!err) err = nvme_wait_completion(adminq, cid, 30);
+    if (!err) err = nvme_wait_completion(adminq, cid, 10);
     if (!err) *res = adminq->cq[cid].cs;
+    else ERROR();
     return err;
 }
 
@@ -361,8 +329,9 @@ int nvme_acmd_set_features(nvme_device_t* dev, int nsid,
 
     DEBUG_FN("cid=%#x fid=%d", cid, fid);
     int err = nvme_submit_cmd(adminq);
-    if (!err) err = nvme_wait_completion(adminq, cid, 30);
+    if (!err) err = nvme_wait_completion(adminq, cid, 10);
     if (!err) *res = adminq->cq[cid].cs;
+    else ERROR();
     return err;
 }
 
@@ -389,7 +358,8 @@ int nvme_acmd_create_cq(nvme_queue_t* ioq, u64 prp)
 
     DEBUG_FN("q=%d cid=%#x qs=%d", ioq->id, cid, ioq->size);
     int err = nvme_submit_cmd(adminq);
-    if (!err) err = nvme_wait_completion(adminq, cid, 30);
+    if (!err) err = nvme_wait_completion(adminq, cid, 10);
+    if (err) ERROR();
     return err;
 }
 
@@ -418,7 +388,8 @@ int nvme_acmd_create_sq(nvme_queue_t* ioq, u64 prp)
 
     DEBUG_FN("q=%d cid=%#x qs=%d", ioq->id, cid, ioq->size);
     int err = nvme_submit_cmd(adminq);
-    if (!err) err = nvme_wait_completion(adminq, cid, 30);
+    if (!err) err = nvme_wait_completion(adminq, cid, 10);
+    if (err) ERROR();
     return err;
 }
 
@@ -429,7 +400,7 @@ int nvme_acmd_create_sq(nvme_queue_t* ioq, u64 prp)
  * @param   opc         op code
  * @return  0 if ok else error code.
  */
-static int nvme_acmd_delete_ioq(nvme_queue_t* ioq, int opc)
+static inline int nvme_acmd_delete_ioq(nvme_queue_t* ioq, int opc)
 {
     nvme_queue_t* adminq = &ioq->dev->adminq;
     int cid = adminq->sq_tail;
@@ -443,7 +414,8 @@ static int nvme_acmd_delete_ioq(nvme_queue_t* ioq, int opc)
     DEBUG_FN("%cq=%d cid=%#x",
              opc == NVME_ACMD_DELETE_CQ ? 'c' : 's', ioq->id, cid);
     int err = nvme_submit_cmd(adminq);
-    if (!err) err = nvme_wait_completion(adminq, cid, 30);
+    if (!err) err = nvme_wait_completion(adminq, cid, 10);
+    if (err) ERROR();
     return err;
 }
 
@@ -534,8 +506,9 @@ int nvme_cmd_write(nvme_queue_t* ioq, u16 cid, int nsid,
 }
 
 /**
- * Create an IO queue pair of completion and submission.
+ * Create an IO submission-completion queue pair.
  * @param   dev         device context
+ * @param   ioq         if NULL then allocate queue
  * @param   id          queue id
  * @param   qsize       queue size
  * @param   sqbuf       submission queue buffer
@@ -544,10 +517,12 @@ int nvme_cmd_write(nvme_queue_t* ioq, u16 cid, int nsid,
  * @param   cqpa        admin completion IO physical address
  * @return  pointer to the created io queue or NULL if failure.
  */
-nvme_queue_t* nvme_create_ioq(nvme_device_t* dev, int id, int qsize,
-                          void* sqbuf, u64 sqpa, void* cqbuf, u64 cqpa)
+nvme_queue_t* nvme_create_ioq(nvme_device_t* dev, nvme_queue_t* ioq,
+            int id, int qsize, void* sqbuf, u64 sqpa, void* cqbuf, u64 cqpa)
 {
-    nvme_queue_t* ioq = zalloc(sizeof(*ioq));
+    if (!ioq) ioq = zalloc(sizeof(*ioq));
+    else ioq->ext = 1;
+
     ioq->dev = dev;
     ioq->id = id;
     ioq->size = qsize;
@@ -564,19 +539,20 @@ nvme_queue_t* nvme_create_ioq(nvme_device_t* dev, int id, int qsize,
 }
 
 /**
- * Create an IO queue pair of submission and completion.
+ * Delete an IO submission-completion queue pair.
  * @param   ioq         io queue to setup
  * @return  0 if ok else -1.
  */
 int nvme_delete_ioq(nvme_queue_t* ioq)
 {
+    if (!ioq) return -1;
     if (nvme_acmd_delete_sq(ioq) || nvme_acmd_delete_cq(ioq)) return -1;
-    free(ioq);
+    if (!ioq->ext) free(ioq);
     return 0;
 }
 
 /**
- * NVMe setup admin queue.
+ * NVMe setup admin submission-completion queue pair.
  * @param   dev         device context
  * @param   qsize       queue size
  * @param   sqbuf       submission queue buffer
@@ -589,12 +565,6 @@ nvme_queue_t* nvme_setup_adminq(nvme_device_t* dev, int qsize,
                                 void* sqbuf, u64 sqpa, void* cqbuf, u64 cqpa)
 {
     if (nvme_ctlr_disable(dev)) return NULL;
-
-    nvme_controller_cap_t cap;
-    cap.val = r64(dev, &dev->reg->cap.val);
-    dev->dbstride = 1 << cap.dstrd; // in u32 size offset
-    dev->maxqsize = cap.mqes + 1;
-    dev->pageshift = PAGESHIFT;
 
     nvme_queue_t* adminq = &dev->adminq;
     adminq->dev = dev;
@@ -624,10 +594,54 @@ nvme_queue_t* nvme_setup_adminq(nvme_device_t* dev, int qsize,
 
     DEBUG_FN("qsize=%d cc=%#x aqa=%#x asq=%#lx acq=%#lx",
              qsize, cc.val, aqa.val, sqpa, cqpa);
-    DEBUG_FN("cap=%#lx mps=%d-%d to=%d maxqs=%d dbs=%d", cap.val, cap.mpsmin,
-             cap.mpsmax, cap.to, dev->maxqsize, dev->dbstride);
     DEBUG_FN("vs=%#x intms=%#x intmc=%#x csts=%#x", dev->reg->vs.val,
              dev->reg->intms, dev->reg->intmc, dev->reg->csts.val);
     return adminq;
 }
 
+/**
+ * Create an NVMe device context and map the controller register.
+ * @param   dev         if NULL then allocate context
+ * @param   mapfd       file descriptor for register mapping
+ * @return  device context or NULL if failure.
+ */
+nvme_device_t* nvme_create(nvme_device_t* dev, int mapfd)
+{
+    if (!dev) dev = zalloc(sizeof(*dev));
+    else dev->ext = 1;
+
+    dev->reg = mmap(0, sizeof(nvme_controller_reg_t),
+                    PROT_READ|PROT_WRITE, MAP_SHARED|MAP_LOCKED, mapfd, 0);
+    if (dev->reg == MAP_FAILED) {
+        ERROR("mmap: %s", strerror(errno));
+        return NULL;
+    }
+
+    nvme_controller_cap_t cap;
+    cap.val = r64(dev, &dev->reg->cap.val);
+    dev->timeout = cap.to;              // in 500ms units
+    dev->mpsmin = cap.mpsmin;           // 2 ^ (12 + MPSMIN)
+    dev->mpsmax = cap.mpsmax;           // 2 ^ (12 + MPSMAX)
+    dev->pageshift = 12 + dev->mpsmin;
+    dev->maxqsize = cap.mqes + 1;
+    dev->dbstride = 1 << cap.dstrd;     // in u32 size offset
+
+    DEBUG_FN("cap=%#lx ps=%u-%u to=%u maxqs=%u dbs=%u", cap.val,
+             cap.mpsmin, cap.mpsmax, cap.to, dev->maxqsize, dev->dbstride);
+
+    return dev;
+}
+
+/**
+ * Delete an NVMe device context
+ * @param   dev         device context
+ */
+void nvme_delete(nvme_device_t* dev)
+{
+    if (dev && dev->reg) {
+        if (munmap(dev->reg, sizeof(nvme_controller_reg_t))) {
+            ERROR("munmap: %s", strerror(errno));
+        }
+    }
+    if (!dev->ext) free(dev);
+}

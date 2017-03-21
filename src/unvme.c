@@ -31,52 +31,52 @@
 
 /**
  * @file
- * @brief UNVMe client library common functions.
+ * @brief UNVMe client library interface functions.
  */
-
-#include <stddef.h>
-#include <sched.h>
 
 #include "unvme_core.h"
 
+/**
+ * Open a client session.
+ * @param   pciname     PCI device name (as BB:DD.F format)
+ * @param   nsid        namespace id
+ * @return  namespace pointer or NULL if error.
+ */
+const unvme_ns_t* unvme_open(const char* pciname, int nsid)
+{
+    int b, d, f;
+    if (sscanf(pciname, "%x:%x.%x", &b, &d, &f) != 3) {
+        ERROR("invalid PCI %s (expect %%x:%%x.%%x format)", pciname);
+        return NULL;
+    }
+    int pci = (b << 16) + (d << 8) + f;
 
-/// Global lock for open/close/alloc/free
-static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-
-unvme_session_t* unvme_do_open(int vfid, int nsid, int qcount, int qsize);
-int unvme_do_close(int sid);
-void* unvme_do_alloc(unvme_session_t* ses, u64 size);
-int unvme_do_free(unvme_session_t* ses, void* buf);
-unvme_desc_t* unvme_do_submit(unvme_queue_t* ioq, int opc, void* buf, u64 slba, u32 nlb);
-int unvme_do_poll(unvme_desc_t* iod, int sec);
-
+    return unvme_do_open(pci, nsid, 0, 0);
+}
 
 /**
- * Open a client session to create io queues.
+ * Open a client session with specified number of IO queues and queue size.
  * @param   pciname     PCI device name (as BB:DD.F format)
  * @param   nsid        namespace id
  * @param   qcount      number of io queues
  * @param   qsize       io queue size
  * @return  namespace pointer or NULL if error.
  */
-const unvme_ns_t* unvme_open(const char* pciname, int nsid, int qcount, int qsize)
+const unvme_ns_t* unvme_openq(const char* pciname, int nsid, int qcount, int qsize)
 {
-    if (qcount < 0 || qsize < 2) {
-        ERROR("qcount must be >= 0 and qsize must be > 1");
+    if (nsid < 1 || qcount < 0 || qsize < 0 || qsize == 1) {
+        ERROR("invalid nsid %d qcount %d or qsize %d", nsid, qcount, qsize);
         return NULL;
     }
 
     int b, d, f;
-    if (sscanf(pciname, "%02x:%02x.%x", &b, &d, &f) != 3) {
-        ERROR("invalid PCI device %s (expect BB:DD.F format)", pciname);
+    if (sscanf(pciname, "%x:%x.%x", &b, &d, &f) != 3) {
+        ERROR("invalid PCI %s (expect %%x:%%x.%%x format)", pciname);
         return NULL;
     }
     int pci = (b << 16) + (d << 8) + f;
 
-    pthread_mutex_lock(&lock);
-    unvme_session_t* ses = unvme_do_open(pci, nsid, qcount, qsize);
-    pthread_mutex_unlock(&lock);
-    return ses ? &ses->ns : NULL;
+    return unvme_do_open(pci, nsid, qcount, qsize);
 }
 
 /**
@@ -86,11 +86,7 @@ const unvme_ns_t* unvme_open(const char* pciname, int nsid, int qcount, int qsiz
  */
 int unvme_close(const unvme_ns_t* ns)
 {
-    unvme_session_t* ses = (unvme_session_t*)ns->ses;
-    pthread_mutex_lock(&lock);
-    unvme_do_close(ses->id);
-    pthread_mutex_unlock(&lock);
-    return 0;
+    return unvme_do_close(ns);
 }
 
 /**
@@ -101,8 +97,7 @@ int unvme_close(const unvme_ns_t* ns)
  */
 void* unvme_alloc(const unvme_ns_t* ns, u64 size)
 {
-    unvme_session_t* ses = (unvme_session_t*)ns->ses;
-    return unvme_do_alloc(ses, size);
+    return unvme_do_alloc(ns, size);
 }
 
 /**
@@ -113,8 +108,7 @@ void* unvme_alloc(const unvme_ns_t* ns, u64 size)
  */
 int unvme_free(const unvme_ns_t* ns, void* buf)
 {
-    unvme_session_t* ses = (unvme_session_t*)ns->ses;
-    return unvme_do_free(ses, buf);
+    return unvme_do_free(ns, buf);
 }
 
 /**
@@ -140,8 +134,7 @@ int unvme_apoll(unvme_iod_t iod, int timeout)
  */
 unvme_iod_t unvme_aread(const unvme_ns_t* ns, int qid, void* buf, u64 slba, u32 nlb)
 {
-    unvme_queue_t* ioq = ((unvme_session_t*)(ns->ses))->queues + qid;
-    return unvme_do_submit(ioq, NVME_CMD_READ, buf, slba, nlb);
+    return unvme_rw(ns, qid, NVME_CMD_READ, buf, slba, nlb);
 }
 
 /**
@@ -156,8 +149,7 @@ unvme_iod_t unvme_aread(const unvme_ns_t* ns, int qid, void* buf, u64 slba, u32 
 unvme_iod_t unvme_awrite(const unvme_ns_t* ns, int qid,
                          const void* buf, u64 slba, u32 nlb)
 {
-    unvme_queue_t* ioq = ((unvme_session_t*)(ns->ses))->queues + qid;
-    return unvme_do_submit(ioq, NVME_CMD_WRITE, (void*)buf, slba, nlb);
+    return unvme_rw(ns, qid, NVME_CMD_WRITE, (void*)buf, slba, nlb);
 }
 
 /**
@@ -171,8 +163,7 @@ unvme_iod_t unvme_awrite(const unvme_ns_t* ns, int qid,
  */
 int unvme_read(const unvme_ns_t* ns, int qid, void* buf, u64 slba, u32 nlb)
 {
-    unvme_queue_t* ioq = ((unvme_session_t*)(ns->ses))->queues + qid;
-    unvme_desc_t* desc = unvme_do_submit(ioq, NVME_CMD_READ, buf, slba, nlb);
+    unvme_desc_t* desc = unvme_rw(ns, qid, NVME_CMD_READ, buf, slba, nlb);
     if (desc) return unvme_do_poll(desc, UNVME_TIMEOUT);
     return -1;
 }
@@ -189,8 +180,7 @@ int unvme_read(const unvme_ns_t* ns, int qid, void* buf, u64 slba, u32 nlb)
 int unvme_write(const unvme_ns_t* ns, int qid,
                 const void* buf, u64 slba, u32 nlb)
 {
-    unvme_queue_t* ioq = ((unvme_session_t*)(ns->ses))->queues + qid;
-    unvme_desc_t* desc = unvme_do_submit(ioq, NVME_CMD_WRITE, (void*)buf, slba, nlb);
+    unvme_desc_t* desc = unvme_rw(ns, qid, NVME_CMD_WRITE, (void*)buf, slba, nlb);
     if (desc) return unvme_do_poll(desc, UNVME_TIMEOUT);
     return -1;
 }

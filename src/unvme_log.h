@@ -31,7 +31,7 @@
 
 /**
  * @file
- * @brief UNVMe logging header file.
+ * @brief Logging header file.
  */
 
 #ifndef _UNVME_LOG_H 

@@ -31,23 +31,23 @@
 
 include ../Makefile.def
 
-TARGET := libunvme.a
+TARGET = libunvme.a
 
-INCS := $(wildcard *.h)
-SRCS := $(wildcard *.c)
-OBJS := $(SRCS:.c=.o)
+INCS = $(wildcard *.h)
+SRCS = $(wildcard *.c)
+OBJS = $(SRCS:.c=.o)
 
 all: $(TARGET)
 
 $(OBJS): $(INCS)
 
 $(TARGET): $(OBJS)
-	$(AR) crs $@ $(OBJS)
+	$(AR) crs $@ $^
 
 %.i: %.c
 	$(CPP) $(CPPFLAGS) -o $@ $<
 
-lint: COPT = -D_FORTIFY_SOURCE=2 -DUNVME_DEBUG -O3
+lint: CFLAGS = -Wall -D_FORTIFY_SOURCE=2 -DUNVME_DEBUG -O3
 lint: clean $(OBJS)
 	@$(RM) *.o
 
@@ -56,5 +56,4 @@ clean:
 	@if [ "$(HOME)" = "/root" ]; then $(RM) /dev/shm/unvme*; fi
 
 .PHONY: all lint clean
-
 

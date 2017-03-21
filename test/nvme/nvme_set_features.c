@@ -42,31 +42,30 @@
  */
 int main(int argc, char* argv[])
 {
-    const char* usage = "Usage: %s pciname nsid features_id dw11\n";
+    const char* usage = "Usage: %s pciname nsid feature_id feature_arg\n";
 
-    error_print_progname = no_progname;
-    if (argc < 5) error(1, 0, usage, argv[0]);
+    if (argc < 5) errx(1, usage, argv[0]);
 
     char* s = argv[2];
     int nsid = strtol(s, &s, 0);
-    if (*s) error(1, 0, usage, argv[0]);
+    if (*s) errx(1, usage, argv[0]);
     s = argv[3];
     int fid = strtol(s, &s, 0);
-    if (*s) error(1, 0, usage, argv[0]);
+    if (*s) errx(1, usage, argv[0]);
     s = argv[3];
     u32 res = strtol(s, &s, 0);
-    if (*s) error(1, 0, usage, argv[0]);
+    if (*s) errx(1, usage, argv[0]);
 
     if (fid < NVME_FEATURE_ARBITRATION || fid > NVME_FEATURE_ASYNC_EVENT ||
         fid == NVME_FEATURE_LBA_RANGE)
-        error(1, 0, "features_id %d not supported", fid);
+        errx(1, "features_id %d not supported", fid);
 
     nvme_setup(argv[1], 8);
     vfio_dma_t* dma = vfio_dma_alloc(vfiodev, sizeof(nvme_feature_lba_data_t));
-    if (!dma) error(1, 0, "vfio_dma_alloc");
+    if (!dma) errx(1, "vfio_dma_alloc");
     u64 prp1 = dma->addr;
     int err = nvme_acmd_get_features(nvmedev, nsid, fid, prp1, 0L, &res);
-    if (err) error(1, 0, "set_features %d failed", fid);
+    if (err) errx(1, "set_features %d failed", fid);
 
     if (fid == NVME_FEATURE_ARBITRATION) {
         nvme_feature_arbitration_t* arb = (nvme_feature_arbitration_t*)&res;

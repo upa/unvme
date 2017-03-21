@@ -1,20 +1,32 @@
 #!/bin/bash
-# Set up and bind NVME device to use with vfio driver.
+# Script to setup UNVMe driver.
 
+PDIR=$(dirname "$0")
 PROG=$(basename "$0")
 
 USAGE="Usage:
-    ${PROG}                 # enable all NVMe devices for UNVMe
-    ${PROG} [BB:DD.F]...    # enable specific NVMe devices for UNVMe
-    ${PROG} reset           # reset all NVMe devices to kernel driver
-    ${PROG} list            # list all NVMe devices mapping info"
+  ${PROG} list
+              -------------------------------------
+              List all NVMe devices binding status.
+              -------------------------------------
 
-trap 'exit 1' TERM
-export EXIT_PID=$$
+  ${PROG} bind [DEVICE]...
+              --------------------------------------------------------
+              Bind device(s) to VFIO and enable for UNVMe.
+              Default to all NVMe devices if no device is specified.
+              Device name format is %x:%x.%x (as shown in lspci).
+              --------------------------------------------------------
 
+  ${PROG} reset [DEVICE]...
+              ---------------------------------------------------------------
+              Reset device(s) to kernel space driver.
+              Default to all NVMe devices if no device is specified.
+              Device name format is %x:%x.%x (as shown in lspci).
+              ---------------------------------------------------------------
+"
 
 #
-# function: print usage and exit
+# Function: print usage and exit.
 #
 myusage() {
     echo -e "${USAGE}"
@@ -22,135 +34,200 @@ myusage() {
 }
 
 #
-# function: print error and exit
+# Function: print error and exit.
 #
-myerror() {
+errx() {
     echo "ERROR: $*"
     kill -s TERM ${EXIT_PID}
     exit 1
 }
 
 # 
-# function: echo and execute command, and exit on error
-#
-mycmd() {
-    #echo -e "$(date +%T)> $*"
-    eval $*
-    if [ $? -ne 0 ]; then myerror "EXIT"; fi
-}
-
-# 
-# function: check for VFIO support.
+# Function: check for VFIO support.
 #
 vfio_check() {
+    modprobe vfio-pci
     if [ -z "$(ls /sys/kernel/iommu_groups)" ]; then
         echo "/sys/kernel/iommu_groups is empty"
-        echo "ERROR: UNVMe requires VFIO, IOMMU, and VT-d enabled"
-        exit 1
-    fi
-    mycmd modprobe vfio-pci
-}
-
-# 
-# function: bind a specified PCI device to VFIO driver
-#
-vfio_bind() {
-    if [ -e /sys/bus/pci/devices/$1/driver/unbind ]; then
-        mycmd "echo $1 > /sys/bus/pci/devices/$1/driver/unbind"
-    fi
-    mycmd "echo $(lspci -mns $1 | cut -d' ' -f3,4) > /sys/bus/pci/drivers/vfio-pci/new_id"
-}
-
-# 
-# function: unbind a specified PCI device from VFIO driver
-#
-vfio_unbind() {
-    if [ -h /sys/bus/pci/drivers/vfio-pci/$1 ]; then
-        mycmd "echo $1 > /sys/bus/pci/drivers/vfio-pci/unbind"
+        errx "UNVMe requires VFIO, IOMMU, and VT-d enabled"
     fi
 }
 
 # 
-# function: unbind all NVMe devices from VFIO driver
+# Function: list each NVMe device with its driver binding status.
 #
-vfio_unbind_all() {
-    for d in $(lspci -Dn | grep '0108: ' | cut -d" " -f1); do
-        vfio_unbind $d
-    done
-}
+unvme_list() {
+    for d in $(lspci -n | grep '0108: ' | cut -d' ' -f1); do
+        m=$(find /sys/bus/pci/drivers -name 0000:$d -printf %h)
 
-# 
-# function: print binding status of the PCI argument list
-#
-print_map() {
-    for d in $(lspci -Dn | grep '0108: ' | cut -d" " -f1); do
-        m=$(find /sys/bus/pci/drivers -name $d -printf %h)
         case $m in 
         */nvme)
-            m="mapped to $(ls /sys/bus/pci/devices/$d/nvme)"
+            m="/dev/$(ls /sys/bus/pci/devices/0000:$d/nvme)"
             ;;
 
         */vfio-pci)
-            m='enabled for UNVMe'
+            if [ -n "$(pgrep -f "unvmed .*$d")" ]; then
+                m='UNVMe loaded'
+            else
+                m='UNVMe enabled'
+            fi
             ;;
 
         esac
 
-        d="$(echo $d | sed 's/^0000://')"
         echo "$d $(lspci -vs $d | sed '/Subsystem:/!d;s/.*: //') - ($m)"
     done
 }
 
+# 
+# Function: kill a UNVMe driver.
 #
-# Start here.
+unvme_kill() {
+    k=$(echo $1 | sed 's/^0//')
+    pkill -9 -f "unvmed .*$k"
+
+    n=0
+    while true; do
+        if [ -z "$(pgrep -f "unvmed .*$k")" ]; then break; fi
+        usleep 100000
+        n=$((n+1))
+        if [ $n -gt 5 ]; then
+            errx "can't kill unvmed $1"
+        fi
+    done
+}
+
+# 
+# Function: unbind a device from any driver.
 #
-SSDLIST=$(lspci -Dn | grep '0108: ' | cut -d" " -f1)
-if [ -z "${SSDLIST}" ]; then
-    echo "No NVMe device found in system"
-    exit 1
-fi
+unvme_unbind() {
+    unvme_kill $1
+    f=0000:$1
+
+    if [ -e /sys/bus/pci/devices/$f/driver/unbind ]; then
+        echo $f > /sys/bus/pci/devices/$f/driver/unbind
+    fi
+
+    n=0
+    while true; do
+        usleep 100000
+        if [ ! -e /sys/bus/pci/devices/$f/driver ]; then break; fi
+        n=$((n+1))
+        if [ $n -gt 30 ]; then
+            d=$(basename $(readlink /sys/bus/pci/devices/$f/driver))
+            errx "can't unbind $1 from $d"
+        fi
+    done
+}
+
+# 
+# Function: bind a device to VFIO driver.
+#
+unvme_bind() {
+    unvme_unbind $1
+    f=0000:$1
+
+    if [ -e /sys/bus/pci/drivers/vfio-pci/bind ]; then
+        echo $(lspci -ns $1 | cut -d' ' -f3 | tr : ' ') > /sys/bus/pci/drivers/vfio-pci/new_id
+    fi
+
+    n=0
+    while true; do
+        usleep 100000
+        if [ -e /sys/bus/pci/drivers/vfio-pci/$f ]; then break; fi
+        n=$((n+1))
+        if [ $n -gt 30 ]; then
+            errx "can't bind $1 to vfio-pci"
+        fi
+    done
+}
+
+# 
+# Function: bind device to VFIO and load the UNVMe driver.
+#
+unvme_load() {
+    unvme_bind $1
+
+    tmp=$(mktemp)
+    if [[ -f ${PDIR}/unvmed && -x ${PDIR}/unvmed ]]; then
+        ${PDIR}/unvmed $1 &> ${tmp}
+    elif [[ -f ${PDIR}/../src/unvmed && -x ${PDIR}/../src/unvmed ]]; then
+        ${PDIR}/../src/unvmed $1 &> ${tmp}
+    else
+        echo 'ERROR: unvmed not found'
+        exit 1
+    fi
+
+    # wait for status
+    while [ ! -s ${tmp} ]; do usleep 100000; done
+    cat ${tmp}
+    rm ${tmp}
+}
+
+# 
+# Function: reset device to kernel space driver.
+#
+unvme_reset() {
+    unvme_unbind $1
+    modprobe -r nvme
+    modprobe nvme
+    sleep 1
+}
+
+
+#
+# Main starts here.
+#
+[ $# -eq 0 ] && myusage
+
+trap 'exit 1' TERM
+export EXIT_PID=$$
+
+cmd=$1
+shift
 
 if [ $# -eq 0 ]; then
-    echo -e "# Setup all NVMe devices for UNVMe driver"
-    vfio_check
-    for d in ${SSDLIST}; do
-        vfio_bind $d
-    done
-    print_map
-
-elif [ "$1" == "reset" ]; then
-    echo -e "# Reset all NVMe devices to kernel space driver"
-    vfio_unbind_all
-    mycmd "modprobe -r nvme"
-    mycmd "modprobe nvme"
-    sleep 3
-    print_map
-
-elif [ "$1" == "list" ]; then
-    print_map
-
+    NVMELIST=$(lspci -n | grep '0108: ' | cut -d' ' -f1)
+    if [ -z "${NVMELIST}" ]; then
+        errx "No NVMe device found in system"
+    fi
 else
-    vfio_check
-    for i in $*; do
-        case $i in
-        [0-9a-f][0-9a-f]:*)
-            if [ -z "$(lspci -n | grep $i\ 0108\:)" ]; then
-                echo -e "No NVMe device at PCI $i"
-                myusage
-                exit
+    for d in $*; do
+        if [[ $d == *:* ]]; then
+            pci=$(lspci -ns $d | grep '0108: ' | cut -d' ' -f1)
+            if [ -z "${pci}" ]; then
+                errx "device $d is not NVMe"
             fi
-            ;;
-
-        *)
-            myusage
-            ;;
-        esac
+            NVMELIST="${NVMELIST} ${pci}"
+        else
+            OPTIONS="${OPTIONS} $d"
+        fi
     done
-
-    echo -e "# Setup specific NVMe device(s) for UNVMe driver"
-    for i in $*; do
-        vfio_bind $(find /sys/bus/pci/devices/*$i -printf %f)
-    done
-    print_map
 fi
+
+vfio_check
+
+case ${cmd} in
+    list)
+        ;;
+
+    bind)
+        for m in ${NVMELIST}; do
+            unvme_bind $m
+        done
+        ;;
+
+    reset)
+        for m in ${NVMELIST}; do
+            unvme_reset $m
+        done
+        ;;
+
+    *)
+        myusage
+        ;;
+
+esac
+
+unvme_list
 

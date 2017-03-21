@@ -38,9 +38,9 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
-#include <ctype.h>
-#include <error.h>
 #include <time.h>
+#include <ctype.h>
+#include <err.h>
 
 #include "unvme.h"
 
@@ -49,30 +49,20 @@ int main(int argc, char** argv)
 {
     const char* usage =
     "Usage: %s [OPTION]... pciname\n\
-             -n       nsid (default 1)\n\
-             -q       queue count (default 4)\n\
-             -d       queue depth (default 8)\n\
-             -s       data size (default 100M)\n\
-             pciname  PCI device name (as BB:DD.F format)\n";
+             -n NSID    nsid (default 1)\n\
+             -s SIZE    data size (default 100M)\n\
+             pciname    PCI device name (as %%x:%%x.%%x format)\n";
 
-    int opt, nsid = 1, qcount = 4, qsize = 8;
+    int opt, nsid = 1;
     u64 datasize = 100 * 1024 * 1024;
     const char* prog = strrchr(argv[0], '/');
     prog = prog ? prog + 1 : argv[0];
 
-    while ((opt = getopt(argc, argv, "n:q:d:s:")) != -1) {
+    while ((opt = getopt(argc, argv, "n:s:")) != -1) {
         switch (opt) {
         case 'n':
             nsid = atoi(optarg);
-            if (nsid <= 0) error(1, 0, "n must be > 0");
-            break;
-        case 'q':
-            qcount = atoi(optarg);
-            if (qsize <= 0) error(1, 0, "q must be > 0");
-            break;
-        case 'd':
-            qsize = atoi(optarg);
-            if (qsize <= 1) error(1, 0, "d must be > 1");
+            if (nsid <= 0) errx(1, "nsid must be > 0");
             break;
         case 's':
             datasize = atol(optarg);
@@ -82,45 +72,49 @@ int main(int argc, char** argv)
             else if (tolower(optarg[l]) == 'g') datasize *= 1024 * 1024 * 1024;
             break;
         default:
-            error(1, 0, usage, prog);
+            errx(1, usage, prog);
         }
     }
-    if (optind >= argc) error(1, 0, usage, prog);
+    if (optind >= argc) errx(1, usage, prog);
     char* pciname = argv[optind];
 
     printf("SIMPLE WRITE-READ-VERIFY TEST BEGIN\n");
-    const unvme_ns_t* ns = unvme_open(pciname, nsid, qcount, qsize);
-    if (!ns) error(1, 0, "unvme_open %s failed", argv[0]);
-    printf("nsid=%d qc=%d qd=%d ds=%ld cap=%ld mbio=%d\n",
-            nsid, qcount, qsize, datasize, ns->blockcount, ns->maxbpio);
+    const unvme_ns_t* ns = unvme_open(pciname, nsid);
+    if (!ns) exit(1);
+    printf("nsid=%d qc=%d qs=%d ds=%ld cap=%ld mbio=%d\n",
+            nsid, ns->qcount, ns->qsize, datasize, ns->blockcount, ns->maxbpio);
 
     void* buf = unvme_alloc(ns, datasize);
-    if (!buf) error(1, 0, "unvme_alloc %ld failed", datasize);
-
+    if (!buf) errx(1, "unvme_alloc %ld failed", datasize);
+    time_t tstart = time(0);
     u64 slba = 0;
     u64 nlb = datasize / ns->blocksize;
     u64* p = buf;
     u64 wsize = datasize / sizeof(u64);
     u64 pat, w;
     int q;
-    for (q = 0; q < qcount; q++) {
-        pat = time(0);
-        printf("Test q=%d buf=%p lba=%#lx nlb=%ld (%08lX)\n", q, p, slba, nlb, pat);
+
+    for (q = 0; q < ns->qcount; q++) {
+        struct timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        pat = ((ts.tv_sec ^ ts.tv_nsec) << 32) | ts.tv_nsec;
+        printf("Test q=%-2d lba=0x%08lx nlb=%#lx pat=0x%08lX\n", q, slba, nlb, pat);
         for (w = 0; w < wsize; w++) p[w] = (pat << 32) + w + q;
         if (unvme_write(ns, q, p, slba, nlb))
-            error(1, 0, "unvme_write %ld block(s) failed", nlb);
+            errx(1, "unvme_write %ld block(s) failed", nlb);
         memset(p, 0, nlb * ns->blocksize);
         if (unvme_read(ns, q, p, slba, nlb))
-            error(1, 0, "unvme_read %ld block(s) failed", nlb);
+            errx(1, "unvme_read %ld block(s) failed", nlb);
         for (w = 0; w < wsize; w++) {
             if (p[w] != ((pat << 32) + w + q))
-                error(1, 0, "mismatch at lba %#lx word %ld", slba, w);
+                errx(1, "mismatch at lba %#lx word %ld", slba, w);
         }
         slba += nlb;
     }
 
     unvme_free(ns, buf);
     unvme_close(ns);
-    printf("SIMPLE WRITE-READ-VERIFY TEST COMPLETE\n");
+
+    printf("SIMPLE WRITE-READ-VERIFY TEST COMPLETE (%ld secs)\n", time(0) - tstart);
     return 0;
 }

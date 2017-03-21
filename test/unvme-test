@@ -1,6 +1,6 @@
 #!/bin/sh
 
-[ $# -ne 1 ] && echo "Usage: $0 PCINAME" && exit 1
+[ $# -lt 1 ] && echo "Usage: $0 PCINAME..." && exit 1
 
 mycmd() {
     echo -e "\n\$ $* ($(date))"
@@ -9,8 +9,13 @@ mycmd() {
 }
 
 dir=$(dirname $0)
-mycmd ${dir}/unvme/unvme_sim_test $*
-mycmd ${dir}/unvme/unvme_api_test $*
-mycmd ${dir}/unvme/unvme_mts_test $*
-mycmd ${dir}/unvme/unvme_lat_test $*
+for d in $*; do
+    mycmd ${dir}/unvme/unvme_sim_test $d
+    mycmd ${dir}/unvme/unvme_api_test $d
+    mycmd ${dir}/unvme/unvme_mts_test $d
+    mycmd ${dir}/unvme/unvme_lat_test $d
+done
 
+if [ $# -gt 1 ]; then
+    mycmd ${dir}/unvme/unvme_mcd_test $*
+fi

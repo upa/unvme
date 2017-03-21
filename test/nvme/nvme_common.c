@@ -35,7 +35,7 @@
  */
 
 #include <stdio.h>
-#include <error.h>
+#include <err.h>
 
 #include "unvme_vfio.h"
 #include "unvme_nvme.h"
@@ -46,7 +46,6 @@ static nvme_device_t* nvmedev;
 static vfio_dma_t* adminsq;
 static vfio_dma_t* admincq;
 
-static void no_progname(void) {}
 
 /**
  * NVMe setup.
@@ -54,26 +53,26 @@ static void no_progname(void) {}
 static void nvme_setup(const char* pciname, int aqsize)
 {
     int b, d, f;
-    if (sscanf(pciname, "%02x:%02x.%1x", &b, &d, &f) != 3) {
-        error(1, 0, "invalid PCI device %s (expect BB:DD.F format)", pciname);
+    if (sscanf(pciname, "%x:%x.%x", &b, &d, &f) != 3) {
+        errx(1, "invalid PCI %s (expect %%x:%%x.%%x format)", pciname);
     }
     int pci = (b << 16) + (d << 8) + f;
 
     if (log_open("/dev/shm/unvme.log", "w")) exit(1);
-    vfiodev = vfio_create(pci);
-    if (!vfiodev) error(1, 0, "vfio_create");
+    vfiodev = vfio_create(NULL, pci);
+    if (!vfiodev) errx(1, "vfio_create");
 
-    nvmedev = nvme_create(vfiodev->fd);
-    if (!nvmedev) error(1, 0, "nvme_create");
+    nvmedev = nvme_create(NULL, vfiodev->fd);
+    if (!nvmedev) errx(1, "nvme_create");
 
     adminsq = vfio_dma_alloc(vfiodev, aqsize * sizeof(nvme_sq_entry_t));
-    if (!adminsq) error(1, 0, "vfio_dma_alloc");
+    if (!adminsq) errx(1, "vfio_dma_alloc");
     admincq = vfio_dma_alloc(vfiodev, aqsize * sizeof(nvme_cq_entry_t));
-    if (!admincq) error(1, 0, "vfio_dma_alloc");
+    if (!admincq) errx(1, "vfio_dma_alloc");
 
     if (!nvme_setup_adminq(nvmedev, aqsize, adminsq->buf, adminsq->addr,
                                             admincq->buf, admincq->addr)) {
-        error(1, 0, "nvme_setup_adminq");
+        errx(1, "nvme_setup_adminq");
     }
 }
 

@@ -43,8 +43,6 @@
     #pragma error "only support little endian CPU architecture"
 #endif
 
-#define PAGESHIFT           12          ///< system page size shift
-
 #ifndef _U_TYPE
 #define _U_TYPE                         ///< bit size data types
 typedef int8_t              s8;         ///< 8-bit signed
@@ -516,36 +514,39 @@ typedef struct _nvme_queue {
     struct _nvme_device*    dev;        ///< device reference
     int                     id;         ///< queue id
     int                     size;       ///< queue size
-    nvme_sq_entry_t*        sq;         ///< submission queue
-    nvme_cq_entry_t*        cq;         ///< completion queue
+    nvme_sq_entry_t*        sq;         ///< submission queue entries
+    nvme_cq_entry_t*        cq;         ///< completion queue entries
     u32*                    sq_doorbell; ///< submission queue doorbell
     u32*                    cq_doorbell; ///< completion queue doorbell
     int                     sq_head;    ///< submission queue head
     int                     sq_tail;    ///< submission queue tail
     int                     cq_head;    ///< completion queue head
-    int                     cq_phase;   ///< completion queue phase bit
+    u16                     cq_phase;   ///< completion queue phase bit
+    u16                     ext;        ///< externally allocated flag
 } nvme_queue_t;
 
 /// Device context
 typedef struct _nvme_device {
     nvme_controller_reg_t*  reg;        ///< register address map
-    int                     dbstride;   ///< doorbell stride (in word size)
-    int                     maxqcount;  ///< max queue count
-    int                     maxqsize;   ///< max queue size
-    int                     pageshift;  ///< pagesize shift
     struct _nvme_queue      adminq;     ///< admin queue reference
+    u16                     maxqcount;  ///< max queue count
+    u16                     maxqsize;   ///< max queue size
+    u16                     dbstride;   ///< doorbell stride (in word size)
+    u16                     timeout;    ///< in 500 ms units
+    u16                     pageshift;  ///< minimum pagesize shift
+    u16                     mpsmin;     ///< MPSMIN
+    u16                     mpsmax;     ///< MPSMAX
+    u16                     ext;        ///< externally allocated flag
 } nvme_device_t;
 
 
 // Export functions
-nvme_device_t* nvme_create(int mapfd);
+nvme_device_t* nvme_create(nvme_device_t* dev, int mapfd);
 void nvme_delete(nvme_device_t* dev);
 
-nvme_queue_t* nvme_setup_adminq(nvme_device_t* dev, int qsize,
-                                void* sqbuf, u64 sqpa, void* cqbuf, u64 cqpa);
+nvme_queue_t* nvme_setup_adminq(nvme_device_t* dev, int qsize, void* sqbuf, u64 sqpa, void* cqbuf, u64 cqpa);
 
-nvme_queue_t* nvme_create_ioq(nvme_device_t* dev, int id, int qsize,
-                              void* sqbuf, u64 sqpa, void* cqbuf, u64 cqpa);
+nvme_queue_t* nvme_create_ioq(nvme_device_t* dev, nvme_queue_t* ioq, int id, int qsize, void* sqbuf, u64 sqpa, void* cqbuf, u64 cqpa);
 int nvme_delete_ioq(nvme_queue_t* ioq);
 
 int nvme_acmd_identify(nvme_device_t* dev, int nsid, u64 prp1, u64 prp2);
@@ -565,4 +566,3 @@ int nvme_check_completion(nvme_queue_t* q, int* stat);
 int nvme_wait_completion(nvme_queue_t* q, int cid, int timeout);
 
 #endif  // _UNVME_NVME_H
-

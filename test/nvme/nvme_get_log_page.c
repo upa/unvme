@@ -119,23 +119,22 @@ where\n\
       log_page_id 2 = SMART / Health information\n\
       log_page_id 3 = firmware slot information\n";
 
-    error_print_progname = no_progname;
-    if (argc != 4) error(1, 0, usage, argv[0]);
+    if (argc != 4) errx(1, usage, argv[0]);
 
     char* s = argv[2];
     int nsid = strtol(s, &s, 0);
     int lid = strtol(argv[3], &s, 0);
-    if (*s || (lid < 1 || lid > 3)) error(1, 0, usage, argv[0]);
+    if (*s || (lid < 1 || lid > 3)) errx(1, usage, argv[0]);
 
     nvme_setup(argv[1], 8);
-    vfio_dma_t* dma = vfio_dma_alloc(vfiodev, 2 << PAGESHIFT);
-    if (!dma) error(1, 0, "vfio_dma_alloc");
+    vfio_dma_t* dma = vfio_dma_alloc(vfiodev, 8192);
+    if (!dma) errx(1, "vfio_dma_alloc");
 
     int numd = dma->size / sizeof(u32) - 1;
     u64 prp1 = dma->addr;
-    u64 prp2 = dma->addr + (1 << PAGESHIFT);
+    u64 prp2 = dma->addr + 4096;
     int err = nvme_acmd_get_log_page(nvmedev, nsid, lid, numd, prp1, prp2);
-    if (err) error(1, 0, "nvme_acmd_get_log_page");
+    if (err) errx(1, "nvme_acmd_get_log_page");
 
     switch (lid) {
         case 1: print_error_info(dma->buf); break;

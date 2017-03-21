@@ -1,10 +1,10 @@
 #!/bin/bash
-# This script may be used to run fio UNVMe benchmarks.
+# This script may be used to run fio uNVMe benchmarks.
 # It determines which fio engine to use based on the specified device name.
 #
 # Usage examples:
 #   % unvme-benchmark /dev/nvme0n1  # using kernel space NVMe driver
-#   % unvme-benchmark 05:00.0       # using user space UNVMe driver
+#   % unvme-benchmark 05:00.0       # using user space uNVMe driver
 
 PROG=$(basename $0)
 USAGE="Usage: ${PROG} DEVICE_NAME"
@@ -26,19 +26,22 @@ filename=FILENAME
 
 [test]
 rw=RW
-numjobs=QCOUNT
-iodepth=QDEPTH"
+numjobs=NUMJOBS
+iodepth=IODEPTH"
 
-: ${FIO_DIR=$(grep '^FIO_DIR' ../Makefile.def | sed 's/.*=\s*//')}
-: ${RW="randread randwrite"}
-: ${QCOUNT="01 04 08 16"}
-: ${QDEPTH="0001 0004 0008 0016 0032 0064"}
-: ${RAMPTIME=120}
-: ${RUNTIME=300}
+: ${FIODIR=$(grep '^FIODIR' ../Makefile.def | sed 's/.*=\s*//')}
+: ${RW="randwrite randread"}
+: ${NUMJOBS="01 04 08 16"}
+: ${IODEPTH="0001 0004 0008 0016"}
+: ${RAMPTIME=60}
+: ${RUNTIME=120}
 : ${BLOCKSIZE=4096}
 : ${IOENGINE=""}
 
 if [ $# -lt 1 ]; then echo ${USAGE}; exit 1; fi
+
+FIO=fio
+if [ -n ${FIODIR} ]; then FIO=${FIODIR}/fio; fi
 
 for i in $@; do
     case $i in
@@ -60,7 +63,7 @@ for i in $@; do
             exit 1
         fi
         if [ ! -e /sys/bus/pci/drivers/vfio-pci/0000:$i ]; then
-            echo "Device $i is not UNVMe enabled"
+            echo "Device $i is not uNVMe enabled"
             exit 1
         fi
         if [ -z ${IOENGINE} ]; then
@@ -96,8 +99,8 @@ cmd() {
 # Start test.
 #
 for rw in ${RW}; do
-    for qc in ${QCOUNT}; do
-        for qd in ${QDEPTH}; do
+    for qc in ${NUMJOBS}; do
+        for qd in ${IODEPTH}; do
             OUTNAME=${OUTDIR}/${DRIVER}-${rw}-${qc}-${qd}
             OUTFILE=${OUTNAME}.out
             FIOFILE=${OUTNAME}.fio
@@ -112,23 +115,23 @@ for rw in ${RW}; do
             fi
 
             if [ -z "${NSID}" ]; then
-                echo "${FIOTEXT}" | sed -e "s?IOENGINE?${IOENGINE}?g;s?RAMPTIME?${RAMPTIME}?g;s?RUNTIME?${RUNTIME}?g;s?BLOCKSIZE?${BLOCKSIZE}?g;s?FILENAME?${FILENAME}?g;s?RW?${rw}?g;s?QCOUNT?${qc}?g;s?QDEPTH?${qd}?g" > ${FIOFILE}
+                echo "${FIOTEXT}" | sed -e "s?IOENGINE?${IOENGINE}?g;s?RAMPTIME?${RAMPTIME}?g;s?RUNTIME?${RUNTIME}?g;s?BLOCKSIZE?${BLOCKSIZE}?g;s?FILENAME?${FILENAME}?g;s?RW?${rw}?g;s?NUMJOBS?${qc}?g;s?IODEPTH?${qd}?g" > ${FIOFILE}
             else
-                echo "${FIOTEXT}" | sed -e "s?IOENGINE?${IOENGINE}?g;s?RAMPTIME?${RAMPTIME}?g;s?RUNTIME?${RUNTIME}?g;s?BLOCKSIZE?${BLOCKSIZE}?g;s?FILENAME?${FILENAME}\nnsid=${NSID}?g;s?RW?${rw}?g;s?QCOUNT?${qc}?g;s?QDEPTH?${qd}?g" > ${FIOFILE}
+                echo "${FIOTEXT}" | sed -e "s?IOENGINE?${IOENGINE}?g;s?RAMPTIME?${RAMPTIME}?g;s?RUNTIME?${RUNTIME}?g;s?BLOCKSIZE?${BLOCKSIZE}?g;s?FILENAME?${FILENAME}\nnsid=${NSID}?g;s?RW?${rw}?g;s?NUMJOBS?${qc}?g;s?IODEPTH?${qd}?g" > ${FIOFILE}
             fi
 
             echo "========"
             cmd /bin/uname -a | tee -a ${OUTFILE}
             cmd cat ${FIOFILE} | tee -a ${OUTFILE}
             echo -e "\n========\n" >> ${OUTFILE}
-            cmd /usr/bin/free | tee -a ${OUTFILE}
+            cmd /usr/bin/free -h | tee -a ${OUTFILE}
             echo -e "\n========\n" >> ${OUTFILE}
 
-            cmd ${FIO_DIR}/fio ${FIOFILE} 2>&1 | tee -a ${OUTFILE}
+            cmd ${FIO} ${FIOFILE} 2>&1 | tee -a ${OUTFILE}
 
             if [ -n "$(grep maxt= ${OUTFILE})" ]; then
                 echo -e "\n========\n" >> ${OUTFILE}
-                cmd /usr/bin/free | tee -a ${OUTFILE}
+                cmd /usr/bin/free -h | tee -a ${OUTFILE}
                 rm ${FIOFILE}
             else
                 echo "### ${PROG} terminated on error ###"

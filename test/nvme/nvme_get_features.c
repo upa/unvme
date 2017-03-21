@@ -44,19 +44,18 @@ int main(int argc, char* argv[])
 {
     const char* usage = "Usage: %s pciname [nsid]\n";
 
-    error_print_progname = no_progname;
-    if (argc < 2) error(1, 0, usage, argv[0]);
+    if (argc < 2) errx(1, usage, argv[0]);
 
     int nsid = 1;
     if (argc > 2) {
         char* s = argv[2];
         nsid = strtol(s, &s, 0);
-        if (*s) error(1, 0, usage, argv[0]);
+        if (*s) errx(1, usage, argv[0]);
     }
 
     nvme_setup(argv[1], 8);
     vfio_dma_t* dma = vfio_dma_alloc(vfiodev, sizeof(nvme_feature_lba_data_t));
-    if (!dma) error(1, 0, "vfio_dma_alloc");
+    if (!dma) errx(1, "vfio_dma_alloc");
     u64 prp1 = dma->addr;
     u32 res;
 
@@ -64,7 +63,7 @@ int main(int argc, char* argv[])
     for (fid = NVME_FEATURE_ARBITRATION; fid <= NVME_FEATURE_ASYNC_EVENT; fid++) {
         int err = nvme_acmd_get_features(nvmedev, nsid, fid, prp1, 0L, &res);
         if (err && fid != NVME_FEATURE_LBA_RANGE) {
-            error(1, 0, "nvme_acmd_get_features %d failed", fid);
+            errx(1, "nvme_acmd_get_features %d failed", fid);
         }
 
         if (fid == NVME_FEATURE_ARBITRATION) {

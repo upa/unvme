@@ -36,32 +36,6 @@
 
 #include "nvme_common.c"
 
-/**
- * Print namespace info.
- */
-void print_namespace(void* buf)
-{
-    nvme_identify_ns_t* ns = buf;
-
-    printf("Identify Namespace\n");
-    printf("==================\n");
-    printf("nsze    : %lu\n", ns->nsze);
-    printf("ncap    : %lu\n", ns->ncap);
-    printf("nuse    : %lu\n", ns->nuse);
-    printf("nsfeat  : %d\n", ns->nsfeat);
-    printf("nlbaf   : %d\n", ns->nlbaf);
-    printf("flbas   : %d\n", ns->flbas);
-    printf("mc      : %d\n", ns->mc);
-    printf("dpc     : %d\n", ns->dpc);
-    printf("dps     : %d\n", ns->dps);
-
-    int i;
-    for (i = 0; i <= ns->nlbaf; i++) {
-        printf("lbaf.%-2d : ms=%-3d lbads=%-3d rp=%d  %s\n",
-               i, ns->lbaf[i].ms, ns->lbaf[i].lbads, ns->lbaf[i].rp,
-               (ns->flbas & 0xf) == i ? "(formatted)" : "");
-    }
-}
 
 /**
  * Print controller info.
@@ -72,33 +46,60 @@ void print_controller(void* buf)
 
     printf("Identify Controller\n");
     printf("===================\n");
-    printf("vid     : %d\n", ctlr->vid);
-    printf("ssvid   : %d\n", ctlr->ssvid);
-    printf("sn      : %.20s\n", ctlr->sn);
-    printf("mn      : %.40s\n", ctlr->mn);
-    printf("fr      : %.8s\n", ctlr->fr);
-    printf("rab     : %d\n", ctlr->rab);
-    printf("ieee    : %02x%02x%02x\n", ctlr->ieee[0], ctlr->ieee[1], ctlr->ieee[2]);
-    printf("mic     : %d\n", ctlr->mic);
-    printf("mdts    : %d\n", ctlr->mdts);
-    printf("oacs    : %d\n", ctlr->oacs);
-    printf("acl     : %d\n", ctlr->acl);
-    printf("aerl    : %d\n", ctlr->aerl);
-    printf("frmw    : %d\n", ctlr->frmw);
-    printf("lpa     : %d\n", ctlr->lpa);
-    printf("elpe    : %d\n", ctlr->elpe);
-    printf("npss    : %d\n", ctlr->npss);
-    printf("avscc   : %d\n", ctlr->avscc);
-    printf("sqes    : %d\n", ctlr->sqes);
-    printf("cqes    : %d\n", ctlr->cqes);
-    printf("nn      : %d\n", ctlr->nn);
-    printf("oncs    : %d\n", ctlr->oncs);
-    printf("fuses   : %d\n", ctlr->fuses);
-    printf("fna     : %d\n", ctlr->fna);
-    printf("vwc     : %d\n", ctlr->vwc);
-    printf("awun    : %d\n", ctlr->awun);
-    printf("awupf   : %d\n", ctlr->awupf);
-    printf("nvscc   : %d\n", ctlr->nvscc);
+    printf("vid      : %#x\n", ctlr->vid);
+    printf("ssvid    : %#x\n", ctlr->ssvid);
+    printf("sn       : %.20s\n", ctlr->sn);
+    printf("mn       : %.40s\n", ctlr->mn);
+    printf("fr       : %.8s\n", ctlr->fr);
+    printf("rab      : %#x\n", ctlr->rab);
+    printf("ieee     : %02x%02x%02x\n", ctlr->ieee[0], ctlr->ieee[1], ctlr->ieee[2]);
+    printf("mic      : %#x\n", ctlr->mic);
+    printf("mdts     : %#x\n", ctlr->mdts);
+    printf("oacs     : %#x\n", ctlr->oacs);
+    printf("acl      : %#x\n", ctlr->acl);
+    printf("aerl     : %#x\n", ctlr->aerl);
+    printf("frmw     : %#x\n", ctlr->frmw);
+    printf("lpa      : %#x\n", ctlr->lpa);
+    printf("elpe     : %#x\n", ctlr->elpe);
+    printf("npss     : %#x\n", ctlr->npss);
+    printf("avscc    : %#x\n", ctlr->avscc);
+    printf("sqes     : %#x\n", ctlr->sqes);
+    printf("cqes     : %#x\n", ctlr->cqes);
+    printf("nn       : %#x\n", ctlr->nn);
+    printf("oncs     : %#x\n", ctlr->oncs);
+    printf("fuses    : %#x\n", ctlr->fuses);
+    printf("fna      : %#x\n", ctlr->fna);
+    printf("vwc      : %#x\n", ctlr->vwc);
+    printf("awun     : %#x\n", ctlr->awun);
+    printf("awupf    : %#x\n", ctlr->awupf);
+    printf("nvscc    : %#x\n", ctlr->nvscc);
+}
+
+/**
+ * Print namespace info.
+ */
+void print_namespace(void* buf, int nsid)
+{
+    nvme_identify_ns_t* ns = buf;
+
+    printf("\nIdentify Namespace %#x\n", nsid);
+    printf("====================\n");
+    printf("nsze     : %#lx\n", ns->nsze);
+    printf("ncap     : %#lx\n", ns->ncap);
+    printf("nuse     : %#lx\n", ns->nuse);
+    printf("nsfeat   : %#x\n", ns->nsfeat);
+    printf("nlbaf    : %#x\n", ns->nlbaf);
+    printf("flbas    : %#x\n", ns->flbas);
+    printf("mc       : %#x\n", ns->mc);
+    printf("dpc      : %#x\n", ns->dpc);
+    printf("dps      : %#x\n", ns->dps);
+
+    int i;
+    for (i = 0; i <= ns->nlbaf; i++) {
+        printf("lbaf.%-3d : ms=%-3d lbads=%-3d rp=%-2d %s\n",
+               i, ns->lbaf[i].ms, ns->lbaf[i].lbads, ns->lbaf[i].rp,
+               (ns->flbas & 0xf) == i ? "(formatted)" : "");
+    }
 }
 
 /**
@@ -106,27 +107,25 @@ void print_controller(void* buf)
  */
 int main(int argc, char* argv[])
 {
-    const char* usage = "Usage: %s pciname [nsid]\n\
-Specify nsid to identify specific namespace\n";
+    const char* usage = "Usage: %s pciname [nsid]\n";
 
-    error_print_progname = no_progname;
-    if (argc < 2 || argc > 3) error(1, 0, usage, argv[0]);
-    int nsid = 0;
+    if (argc < 2) errx(1, usage, argv[0]);
+    int nsid = 1;
     if (argc > 2) {
-        char* s = argv[2];
-        nsid = strtol(s, &s, 0);
-        if (*s || nsid < 0) error(1, 0, usage, argv[0]);
+        nsid = atoi(argv[2]);
+        if (nsid < 1) errx(1, "invalid nsid %#x", nsid);
     }
 
     nvme_setup(argv[1], 8);
     vfio_dma_t* dma = vfio_dma_alloc(vfiodev, 8192);
-    if (!dma) error(1, 0, "vfio_dma_alloc");
+    if (!dma) errx(1, "vfio_dma_alloc");
 
-    int err = nvme_acmd_identify(nvmedev, nsid, dma->addr, dma->addr + 4096);
-    if (err) error(1, 0, "nvme_acmd_identify");
-
-    if (nsid) print_namespace(dma->buf);
-    else print_controller(dma->buf);
+    if (nvme_acmd_identify(nvmedev, 0, dma->addr, dma->addr + 4096))
+        errx(1, "nvme_acmd_identify 0");
+    print_controller(dma->buf);
+    if (nvme_acmd_identify(nvmedev, nsid, dma->addr, dma->addr + 4096))
+        errx(1, "nvme_acmd_identify %d", nsid);
+    print_namespace(dma->buf, nsid);
 
     nvme_cleanup();
     return 0;

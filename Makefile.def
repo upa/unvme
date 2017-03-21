@@ -40,5 +40,5 @@ CPPFLAGS += -D_GNU_SOURCE
 #CPPFLAGS += -DUNVME_DEBUG
 
 # To build the ioengine modules, specify fio directory where the header files
-#FIO_DIR := /opt/fio
+#FIODIR := /opt/fio
 

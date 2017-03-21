@@ -38,21 +38,18 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
-#include <error.h>
 #include <string.h>
 #include <pthread.h>
 #include <sched.h>
 #include <semaphore.h>
 #include <time.h>
+#include <err.h>
 
 #include "unvme.h"
 #include "rdtsc.h"
 
-/// macro to print an error message
-#define ERROR(fmt, arg...)  error(1, 0, "ERROR: " fmt "\n", ##arg)
-
 /// macro to print an io related error message
-#define IOERROR(s, p)       ERROR(s " buf=%p lba=%#lx", (p)->buf, (p)->lba)
+#define IOERROR(s, p)   errx(1, s " buf=%p lba=%#lx", (p)->buf, (p)->lba)
 
 /// page structure
 typedef struct {
@@ -67,10 +64,10 @@ static const unvme_ns_t* ns;    ///< unvme namespace pointer
 static int nsid = 1;            ///< namespace id
 static int qcount = 1;          ///< queue count
 static int qsize = 8;           ///< queue size
-static int runtime = 30;        ///< run time in seconds
+static int runtime = 15;        ///< run time in seconds
 static u64 endtsc = 0;          ///< end run tsc
-static sem_t sem1;              ///< semaphore to start thread
-static sem_t sem2;              ///< semaphore to start test
+static sem_t sm_ready;          ///< semaphore to start thread
+static sem_t sm_start;          ///< semaphore to start test
 static pthread_t* ses;          ///< array of thread sessions
 static u64 last_lba;            ///< last page boundary lba
 static u64 ioc;                 ///< total number of io count
@@ -126,8 +123,8 @@ static void* run_thread(void* arg)
         p++;
     }
 
-    sem_post(&sem1);
-    sem_wait(&sem2);
+    sem_post(&sm_ready);
+    sem_wait(&sm_start);
 
     for (i = 0; i < ns->maxiopq; i++) io_submit(q, rw, pages + i);
 
@@ -174,11 +171,15 @@ void run_test(const char* name, int rw)
     min_clat = -1;
     max_clat = 0;
 
+    sem_init(&sm_ready, 0, 0);
+    sem_init(&sm_start, 0, 0);
+
+    u64 tsec = rdtsc_second();
     int q;
     for (q = 0; q < qcount; q++) {
         long arg = (rw << 16) + q;
         pthread_create(&ses[q], 0, run_thread, (void*)arg);
-        sem_wait(&sem1);
+        sem_wait(&sm_ready);
     }
 
     sleep(1);
@@ -186,21 +187,25 @@ void run_test(const char* name, int rw)
     struct tm* t = localtime(&te);
     printf("%s: run test for %d seconds (%02d:%02d:%02d)\n",
            name, runtime, t->tm_hour, t->tm_min, t->tm_sec);
-    endtsc = rdtsc() + (runtime * rdtsc_second());
+    endtsc = rdtsc() + (runtime * tsec);
 
-    for (q = 0; q < qcount; q++) sem_post(&sem2);
+    for (q = 0; q < qcount; q++) sem_post(&sm_start);
     for (q = 0; q < qcount; q++) pthread_join(ses[q], 0);
 
     /*
-    printf("%s: slat=(%lu %lu %lu) lat=(%lu %lu %lu) ioc=%ld\n",
+    printf("%s: slat=(%lu %lu %lu) lat=(%lu %lu %lu) tscs ioc=%ld\n",
             name, min_slat, max_slat, avg_slat/ioc,
             min_clat, max_clat, avg_clat/ioc, ioc);
     */
-    u64 utsc = rdtsc_second() / 1000000;
+
+    u64 utsc = tsec / 1000000;
     printf("%s: slat=(%.2f %.2f %.2f) lat=(%.2f %.2f %.2f) usecs ioc=%ld\n",
             name, (double)min_slat/utsc, (double)max_slat/utsc,
             (double)avg_slat/ioc/utsc, (double)min_clat/utsc,
             (double)max_clat/utsc, (double)avg_clat/ioc/utsc, ioc);
+
+    sem_destroy(&sm_ready);
+    sem_destroy(&sm_start);
 }
 
 /**
@@ -209,62 +214,48 @@ void run_test(const char* name, int rw)
 int main(int argc, char* argv[])
 {
     const char* usage =
-"Usage: %s [OPTION]... pciname\n\
+"Usage: %s [OPTION]... PCINAME\n\
          -n       nsid (default to 1)\n\
-         -q       queue count (default 1)\n\
-         -d       queue depth (default 8)\n\
-         -t       run time in seconds (default 30)\n\
-         pciname  PCI device name (as BB:DD.F) format\n";
+         -t       run time in seconds (default 15)\n\
+         PCINAME  PCI device name (as %%x:%%x.%%x) format\n";
 
     char* prog = strrchr(argv[0], '/');
     prog = prog ? prog + 1 : argv[0];
 
     int opt;
-    while ((opt = getopt(argc, argv, "n:q:d:t:")) != -1) {
+    while ((opt = getopt(argc, argv, "n:t:")) != -1) {
         switch (opt) {
         case 'n':
             nsid = atoi(optarg);
-            if (nsid <= 0) error(1, 0, "n must be > 0");
-            break;
-        case 'q':
-            qcount = atoi(optarg);
-            if (qcount <= 0) error(1, 0, "q must be > 0");
-            break;
-        case 'd':
-            qsize = atoi(optarg);
-            if (qsize <= 1) error(1, 0, "d must be > 1");
+            if (nsid <= 0) errx(1, "n must be > 0");
             break;
         case 't':
             runtime = atoi(optarg);
-            if (runtime <= 0) error(1, 0, "r must be > 0");
+            if (runtime <= 0) errx(1, "r must be > 0");
             break;
         default:
-            error(1, 0, usage, prog);
+            errx(1, usage, prog);
         }
     }
-    if (optind >= argc) error(1, 0, usage, prog);
+    if (optind >= argc) errx(1, usage, prog);
     char* pciname = argv[optind];
 
     printf("LATENCY TEST BEGIN\n");
-    ns = unvme_open(pciname, nsid, qcount, qsize);
-    if (!ns) ERROR("open %s failed", pciname);
+    time_t tstart = time(0);
+    if (!(ns = unvme_open(pciname, nsid))) exit(1);
     last_lba = (ns->blockcount - ns->nbpp) & ~(u64)(ns->nbpp - 1);
-    printf("nsid=%d qc=%d qd=%d cap=%ld mbio=%d lastlba=%#lx\n",
+    printf("nsid=%d qc=%d qs=%d cap=%ld mbio=%d lastlba=%#lx\n",
             nsid, qcount, qsize, ns->blockcount, ns->maxbpio, last_lba);
 
-    sem_init(&sem1, 0, 0);
-    sem_init(&sem2, 0, 0);
     ses = calloc(qcount, sizeof(pthread_t));
 
     run_test("read", 0);
     run_test("write", 1);
 
     free(ses);
-    sem_destroy(&sem1);
-    sem_destroy(&sem2);
     unvme_close(ns);
-    printf("LATENCY TEST COMPLETE\n");
 
+    printf("LATENCY TEST COMPLETE (%ld secs)\n", time(0) - tstart);
     return 0;
 }
 
