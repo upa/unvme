@@ -32,7 +32,7 @@
 include ../../Makefile.def
 
 TARGETS = unvme_sim_test unvme_api_test unvme_mts_test unvme_lat_test \
-          unvme_mcd_test
+          unvme_mcd_test unvme_info
 
 UNVME_SRC = ../../src
 

@@ -70,65 +70,12 @@
 /// Log and print an unrecoverable error message and exit
 #define FATAL(fmt, arg...)  do { ERROR(fmt, ##arg); abort(); } while (0)
 
-/// Fast lock write bit
-#define UNVME_LOCKW     0x10000000
-
 
 // Global static variables
 static const char*      unvme_log = "/dev/shm/unvme.log";   ///< Log filename
 static unvme_session_t* unvme_ses = NULL;                   ///< session list
 static unvme_lock_t     unvme_lock = 0;                     ///< session lock
 
-
-/**
- * Increment read lock and wait if pending write.
- * @param   lock    lock variable
- */
-static inline void unvme_lockr(unvme_lock_t* lock)
-{
-    for (;;) {
-        if (__sync_fetch_and_add(lock, 1) < UNVME_LOCKW) return;
-        __sync_fetch_and_sub(lock, 1);
-        sched_yield();
-    }
-}
-
-/**
- * Decrement read lock.
- * @param   lock    lock variable
- */
-static inline void unvme_unlockr(unvme_lock_t* lock)
-{
-    __sync_fetch_and_sub(lock, 1);
-}
-
-/**
- * Acquire write lock and wait for all pending read/write.
- * @param   lock    lock variable
- */
-static inline void unvme_lockw(unvme_lock_t* lock)
-{
-    for (;;) {
-        int val = __sync_fetch_and_or(lock, UNVME_LOCKW);
-        if (val == 0) return;
-        sched_yield();
-
-        // if not pending write then just wait for all reads to clear
-        if (val < UNVME_LOCKW) {
-            while (*lock != UNVME_LOCKW) sched_yield();
-            return;
-        }
-    }
-}
-
-/**
- * Clear the write lock.
- * @param   lock    lock variable
- */
-static inline void unvme_unlockw(unvme_lock_t* lock)
-{
-    __sync_fetch_and_and(lock, ~UNVME_LOCKW);
-}
 
 /**
  * Get a descriptor entry by moving from the free to the use list.
@@ -223,7 +170,7 @@ static int unvme_complete_io(unvme_ioq_t* ioq, int timeout)
     if (ioq->cidcount) {
         while (ioq->descnext->cidcount == 0) ioq->descnext = ioq->descnext->next;
     }
-    PDEBUG("# c q%d={%d %d %#lx} @%d={%d %#lx} @%d",
+    PDEBUG("# c q%d={%d %d %#lx} d={%d %d %#lx} @%d",
            ioq->nvmeq.id, cid, ioq->cidcount, *ioq->cidmask,
            desc->id, desc->cidcount, *desc->cidmask, ioq->descnext->id);
     return err;
@@ -326,7 +273,7 @@ static int unvme_submit_io(const unvme_ns_t* ns, unvme_desc_t* desc,
         ioq->cidcount++;
         desc->cidmask[b] |= mask;
         desc->cidcount++;
-        PDEBUG("# %c %#lx %#x q%d={%d %d %#lx} @%d={%d %#lx}",
+        PDEBUG("# %c %#lx %#x q%d={%d %d %#lx} d={%d %d %#lx}",
                desc->opc == NVME_CMD_READ ? 'r' : 'w', slba, nlb,
                ioq->nvmeq.id, cid, ioq->cidcount, *ioq->cidmask,
                desc->id, desc->cidcount, *desc->cidmask);
@@ -493,7 +440,7 @@ unvme_ns_t* unvme_do_open(int pci, int nsid, int qcount, int qsize)
     while (xses) {
         if (xses->ns.pci == pci) {
             if (nsid > xses->dev->nscount) {
-                ERROR("invalid %06x nsid %d", pci, nsid);
+                ERROR("invalid %06x nsid %d (max %d)", pci, nsid, xses->dev->nscount);
                 return NULL;
             }
             if (xses->ns.id == nsid) {
@@ -523,7 +470,7 @@ unvme_ns_t* unvme_do_open(int pci, int nsid, int qcount, int qsize)
         nvme_identify_ctlr_t* idc = (nvme_identify_ctlr_t*)dma->buf;
         dev->nscount = idc->nn;
         if (nsid > dev->nscount) {
-            ERROR("invalid %06x nsid %d", pci, nsid);
+            ERROR("invalid %06x nsid %d (max %d)", pci, nsid, dev->nscount);
             return NULL;
         }
 
@@ -661,7 +608,7 @@ int unvme_do_free(const unvme_ns_t* ns, void* buf)
  */
 int unvme_do_poll(unvme_desc_t* desc, int timeout)
 {
-    PDEBUG("# POLL @%d={%d %#lx}", desc->id, desc->cidcount, *desc->cidmask);
+    PDEBUG("# POLL d={%d %d %#lx}", desc->id, desc->cidcount, *desc->cidmask);
     int err = 0;
     while (desc->cidcount) {
         if ((err = unvme_complete_io(desc->ioq, timeout)) != 0) break;
@@ -680,7 +627,7 @@ int unvme_do_poll(unvme_desc_t* desc, int timeout)
  * @param   buf         data buffer
  * @param   slba        starting lba
  * @param   nlb         number of logical blocks
- * @return  0 if ok else error status.
+ * @return  I/O descriptor or NULL if error.
  */
 unvme_desc_t* unvme_rw(const unvme_ns_t* ns, int qid, int opc,
                        void* buf, u64 slba, u32 nlb)

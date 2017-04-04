@@ -29,16 +29,16 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-SHELL := /bin/sh
+SHELL:=/bin/bash
 
 # Default compilation flags
-CFLAGS ?= -O2
-CFLAGS += -Wall -fPIC
-CPPFLAGS += -D_GNU_SOURCE
+CFLAGS?=-O2
+CFLAGS+=-Wall -fPIC
+CPPFLAGS+=-D_GNU_SOURCE
 
 # To turn on debug message logging
-#CPPFLAGS += -DUNVME_DEBUG
+#CPPFLAGS+=-DUNVME_DEBUG
 
 # To build the ioengine modules, specify fio directory where the header files
-#FIODIR := /opt/fio
+#FIODIR:=/opt/fio
 

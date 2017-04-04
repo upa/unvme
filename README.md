@@ -68,18 +68,19 @@ UNVMe requires root privilege to access a device.
 Build, Run, and Test
 ====================
 
-To install the driver and library, run:
+To download and install the driver library, run:
 
+    $ git clone https://github.com/MicronSSD/unvme.git
     $ make install
 
 
-To set up for UNVMe driver usage (once before running applications), run:
+To setup a device for UNVMe usage (do once before running applications), run:
 
     $ unvme-setup bind
 
     By default, all NVMe devices found in the system will be bound to the
     VFIO driver enabling them for UNVMe usage.  Specific PCI device(s)
-    may also be specified for binding.
+    may also be specified for binding, e.g. unvme-setup bind 07:00.0.
 
 
 To reset device(s) to the NVMe kernel space driver, run:
@@ -112,7 +113,8 @@ To run fio benchmark tests against UNVMe:
     1) Download and compile the fio source code (available on https://github.com/axboe/fio).
 
 
-    2) Edit Makefile.def and set FIODIR to the compiled fio source directory.
+    2) Edit unvme/Makefile.def and set FIODIR to the compiled fio source
+       directory (or alternatively export the FIODIR variable).
 
 
     3) Rerun make to include building the fio engine, since setting FIODIR
@@ -189,6 +191,5 @@ As defined in unvme.h, the following functions are supported:
 
 Note that a user space filesystem, namely UNFS, has also been developed
 at Micron to work with the UNVMe driver.  Such available filesystem enables
-major applications like MongoDB to be ported to run on UNVMe driver.
+major applications like MongoDB to work with UNVMe driver.
 See https://github.com/MicronSSD/unfs.git for details.
-

@@ -42,11 +42,9 @@
 #include "unvme_log.h"
 #include "unvme_vfio.h"
 #include "unvme_nvme.h"
+#include "unvme_lock.h"
 #include "unvme.h"
 
-
-/// Simple read write lock
-typedef int unvme_lock_t;
 
 /// IO memory allocation tracking info
 typedef struct _unvme_iomem {

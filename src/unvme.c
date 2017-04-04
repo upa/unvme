@@ -112,18 +112,6 @@ int unvme_free(const unvme_ns_t* ns, void* buf)
 }
 
 /**
- * Poll for completion status of a previous IO submission.
- * If there's no error, the descriptor will be released.
- * @param   iod         IO descriptor
- * @param   timeout     in seconds
- * @return  0 if ok else error status.
- */
-int unvme_apoll(unvme_iod_t iod, int timeout)
-{
-    return unvme_do_poll(iod, timeout);
-}
-
-/**
  * Read data from specified logical blocks on device.
  * @param   ns          namespace handle
  * @param   qid         client queue index
@@ -153,6 +141,18 @@ unvme_iod_t unvme_awrite(const unvme_ns_t* ns, int qid,
 }
 
 /**
+ * Poll for completion status of a previous IO submission.
+ * If there's no error, the descriptor will be released.
+ * @param   iod         IO descriptor
+ * @param   timeout     in seconds
+ * @return  0 if ok else error status.
+ */
+int unvme_apoll(unvme_iod_t iod, int timeout)
+{
+    return unvme_do_poll(iod, timeout);
+}
+
+/**
  * Read data from specified logical blocks on device.
  * @param   ns          namespace handle
  * @param   qid         client queue index
@@ -164,7 +164,10 @@ unvme_iod_t unvme_awrite(const unvme_ns_t* ns, int qid,
 int unvme_read(const unvme_ns_t* ns, int qid, void* buf, u64 slba, u32 nlb)
 {
     unvme_desc_t* desc = unvme_rw(ns, qid, NVME_CMD_READ, buf, slba, nlb);
-    if (desc) return unvme_do_poll(desc, UNVME_TIMEOUT);
+    if (desc) {
+        sched_yield();
+        return unvme_do_poll(desc, UNVME_TIMEOUT);
+    }
     return -1;
 }
 
@@ -181,7 +184,10 @@ int unvme_write(const unvme_ns_t* ns, int qid,
                 const void* buf, u64 slba, u32 nlb)
 {
     unvme_desc_t* desc = unvme_rw(ns, qid, NVME_CMD_WRITE, (void*)buf, slba, nlb);
-    if (desc) return unvme_do_poll(desc, UNVME_TIMEOUT);
+    if (desc) {
+        sched_yield();
+        return unvme_do_poll(desc, UNVME_TIMEOUT);
+    }
     return -1;
 }
 

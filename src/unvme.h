@@ -51,8 +51,8 @@ typedef uint32_t        u32;        ///< 32-bit unsigned
 typedef uint64_t        u64;        ///< 64-bit unsigned
 #endif // _U_TYPE
 
-#define UNVME_TIMEOUT   60          ///< default I/O timeout in seconds
-#define UNVME_QSIZE     65          ///< default I/O queue size
+#define UNVME_TIMEOUT   30          ///< default I/O timeout in seconds
+#define UNVME_QSIZE     256         ///< default I/O queue size
 
 /// Namespace attributes structure
 typedef struct _unvme_ns {

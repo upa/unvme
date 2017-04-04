@@ -466,8 +466,9 @@ int nvme_cmd_rw(nvme_queue_t* ioq, int opc, u16 cid, int nsid,
     cmd->common.prp2 = prp2;
     cmd->slba = slba;
     cmd->nlb = nlb - 1;
-    DEBUG_FN("q=%d t=%d cid=%#x nsid=%d lba=%#lx nb=%d (%c)", ioq->id,
-             ioq->sq_tail, cid, nsid, slba, nlb, opc == NVME_CMD_READ? 'R' : 'W');
+    DEBUG_FN("q=%d t=%d h=%d cid=%#x nsid=%d lba=%#lx nb=%d (%c)",
+             ioq->id, ioq->sq_tail, ioq->sq_head, cid, nsid, slba, nlb,
+             opc == NVME_CMD_READ? 'R' : 'W');
     return nvme_submit_cmd(ioq);
 }
 

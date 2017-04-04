@@ -4,6 +4,7 @@ src/.model
 src/libunvme.a
 src/unvmed
 test/unvme/*_test
+test/unvme/unvme_info
 test/nvme/nvme_identify
 test/nvme/nvme_get_log_page
 test/nvme/nvme_get_features
