@@ -123,7 +123,7 @@ To run fio benchmark tests against UNVMe:
        $ make
 
        Note that the fio source code is constantly changing, and unvme_fio.c
-       has been verified to work with the fio versions 2.7 through 2.14
+       has been verified to work with the fio versions 2.7 through 2.19
 
 
     4) Set up for UNVMe driver (if not already):

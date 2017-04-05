@@ -32,7 +32,6 @@ typedef struct {
 typedef struct {
     pthread_mutex_t     mutex;
     const unvme_ns_t*   ns;
-    int                 active;
     int                 ncpus;
 } unvme_context_t;
 
@@ -42,6 +41,15 @@ static unvme_context_t  unvme = { .mutex = PTHREAD_MUTEX_INITIALIZER };
 
 
 /*
+ * Clean up UNVMe upon exit.
+ */
+static void do_unvme_cleanup(void)
+{
+    unvme_close(unvme.ns);
+    unvme.ns = NULL;
+}
+
+/*
  * Initialize UNVMe.
  */
 static int do_unvme_init(char* pciname, struct thread_data *td)
@@ -49,7 +57,6 @@ static int do_unvme_init(char* pciname, struct thread_data *td)
     TDEBUG("numjobs=%d iodepth=%d", td->o.numjobs, td->o.iodepth);
 
     pthread_mutex_lock(&unvme.mutex);
-    unvme.active++;
 
     if (!unvme.ns) {
         unvme_options_t* opt = td->eo;
@@ -62,6 +69,7 @@ static int do_unvme_init(char* pciname, struct thread_data *td)
         unvme.ncpus = sysconf(_SC_NPROCESSORS_ONLN);
         TDEBUG("unvme_open %s nsid=%d q=%dx%d ncpus=%d",
                pciname, nsid, unvme.ns->qcount, unvme.ns->qsize, unvme.ncpus);
+        atexit(do_unvme_cleanup);
     }
 
     if (td->thread_number > unvme.ns->qcount ||
@@ -249,17 +257,6 @@ static void fio_unvme_cleanup(struct thread_data *td)
         if (udata->iocq) free(udata->iocq);
         free(udata);
     }
-
-    pthread_mutex_lock(&unvme.mutex);
-    TDEBUG("active=%d", unvme.active);
-
-    if (--unvme.active == 0 && unvme.ns) {
-        TDEBUG("unvme_close");
-        unvme_close(unvme.ns);
-        unvme.ns = NULL;
-    }
-
-    pthread_mutex_unlock(&unvme.mutex);
 }
 
 static int fio_unvme_iomem_alloc(struct thread_data *td, size_t len)
