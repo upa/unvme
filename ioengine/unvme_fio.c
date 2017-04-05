@@ -16,7 +16,7 @@
 #include "fio.h"
 #include "optgroup.h"       // since fio 2.4
 
-#define TDEBUG(fmt, arg...) //fprintf(stderr, "#%s.%d " fmt "\n", __func__, td->thread_number, ##arg)
+#define TDEBUG(fmt, arg...) //printf("#%s.%d " fmt "\n", __func__, td->thread_number, ##arg)
 
 typedef struct {
     void*               pad;
@@ -52,9 +52,9 @@ static void do_unvme_cleanup(void)
 /*
  * Initialize UNVMe.
  */
-static int do_unvme_init(char* pciname, struct thread_data *td)
+static int do_unvme_init(struct thread_data *td)
 {
-    TDEBUG("numjobs=%d iodepth=%d", td->o.numjobs, td->o.iodepth);
+    TDEBUG("device=%s numjobs=%d iodepth=%d", td->o.filename, td->o.numjobs, td->o.iodepth);
 
     pthread_mutex_lock(&unvme.mutex);
 
@@ -62,6 +62,7 @@ static int do_unvme_init(char* pciname, struct thread_data *td)
         unvme_options_t* opt = td->eo;
         int nsid = opt->nsid ? opt->nsid : 1;
 
+        char* pciname = td->o.filename;
         if (pciname[2] == '.') pciname[2] = ':';
         unvme.ns = unvme_open(pciname, nsid);
         if (!unvme.ns) error(1, 0, "unvme_open %s failed", pciname);
@@ -69,6 +70,7 @@ static int do_unvme_init(char* pciname, struct thread_data *td)
         unvme.ncpus = sysconf(_SC_NPROCESSORS_ONLN);
         TDEBUG("unvme_open %s nsid=%d q=%dx%d ncpus=%d",
                pciname, nsid, unvme.ns->qcount, unvme.ns->qsize, unvme.ncpus);
+
         atexit(do_unvme_cleanup);
     }
 
@@ -91,6 +93,99 @@ static int do_unvme_init(char* pciname, struct thread_data *td)
 
     pthread_mutex_unlock(&unvme.mutex);
     return 0;
+}
+
+/*
+ * The ->get_file_size() is called once for every job (i.e. numjobs)
+ * before all other functions.  This is called after ->setup() but
+ * is simpler to initialize here since we only care about the device name
+ * (given as file_name) and just have to specify the device size.
+ */
+static int fio_unvme_get_file_size(struct thread_data *td, struct fio_file *f)
+{
+    TDEBUG("file=%s", f->file_name);
+    if (!fio_file_size_known(f)) {
+        do_unvme_init(td);
+        f->filetype = FIO_TYPE_CHAR;
+        f->real_file_size = unvme.ns->blockcount * unvme.ns->blocksize;
+        fio_file_set_size_known(f);
+    }
+    return 0;
+}
+
+/*
+ * The ->init() function is called once per thread/process, and should set up
+ * any structures that this io engine requires to keep track of io. Not
+ * required.
+ */
+static int fio_unvme_init(struct thread_data *td)
+{
+    unvme_data_t* udata = calloc(1, sizeof(unvme_data_t));
+    if (!udata) return 1;
+
+    udata->iocq = calloc(td->o.iodepth + 1, sizeof(void*));
+    if (!udata->iocq) {
+        free (udata);
+        return 1;
+    }
+
+    td->io_ops_data = udata;
+    return 0;
+}
+
+/*
+ * This is paired with the ->init() function and is called when a thread is
+ * done doing io. Should tear down anything setup by the ->init() function.
+ * Not required.
+ */
+static void fio_unvme_cleanup(struct thread_data *td)
+{
+    unvme_data_t* udata = td->io_ops_data;
+    if (udata) {
+        if (udata->iocq) free(udata->iocq);
+        free(udata);
+    }
+}
+
+/*
+ * Hook for opening the given file. Unless the engine has special
+ * needs, it usually just provides generic_file_open() as the handler.
+ */
+static int fio_unvme_open(struct thread_data *td, struct fio_file *f)
+{
+    TDEBUG();
+    return 0;
+}
+
+/*
+ * Hook for closing a file. See fio_unvme_open().
+ */
+static int fio_unvme_close(struct thread_data *td, struct fio_file *f)
+{
+    TDEBUG();
+    return 0;
+}
+
+/*
+ * Allocate IO memory.
+ */
+static int fio_unvme_iomem_alloc(struct thread_data *td, size_t len)
+{
+    // in some case, IO mem alloc is called first
+    if (!unvme.ns) do_unvme_init(td);
+
+    if (!td->orig_buffer) td->orig_buffer = unvme_alloc(unvme.ns, len);
+    TDEBUG("%p %ld", td->orig_buffer, len);
+    return td->orig_buffer == NULL;
+}
+
+/*
+ * Free IO memory.
+ */
+static void fio_unvme_iomem_free(struct thread_data *td)
+{
+    TDEBUG("%p", td->orig_buffer);
+    if (td->orig_buffer) unvme_free(unvme.ns, td->orig_buffer);
 }
 
 /*
@@ -206,90 +301,6 @@ static int fio_unvme_queue(struct thread_data *td, struct io_u *io_u)
     return err ? FIO_Q_COMPLETED : FIO_Q_QUEUED;
 }
 
-/*
- * Hook for opening the given file. Unless the engine has special
- * needs, it usually just provides generic_file_open() as the handler.
- */
-static int fio_unvme_open(struct thread_data *td, struct fio_file *f)
-{
-    TDEBUG();
-    return 0;
-}
-
-/*
- * Hook for closing a file. See fio_unvme_open().
- */
-static int fio_unvme_close(struct thread_data *td, struct fio_file *f)
-{
-    TDEBUG();
-    return 0;
-}
-
-/*
- * The ->init() function is called once per thread/process, and should set up
- * any structures that this io engine requires to keep track of io. Not
- * required.
- */
-static int fio_unvme_init(struct thread_data *td)
-{
-    unvme_data_t* udata = calloc(1, sizeof(unvme_data_t));
-    if (!udata) return 1;
-
-    udata->iocq = calloc(td->o.iodepth + 1, sizeof(void*));
-    if (!udata->iocq) {
-        free (udata);
-        return 1;
-    }
-
-    td->io_ops_data = udata;
-    return 0;
-}
-
-/*
- * This is paired with the ->init() function and is called when a thread is
- * done doing io. Should tear down anything setup by the ->init() function.
- * Not required.
- */
-static void fio_unvme_cleanup(struct thread_data *td)
-{
-    unvme_data_t* udata = td->io_ops_data;
-    if (udata) {
-        if (udata->iocq) free(udata->iocq);
-        free(udata);
-    }
-}
-
-static int fio_unvme_iomem_alloc(struct thread_data *td, size_t len)
-{
-    td->orig_buffer = unvme_alloc(unvme.ns, len);
-    TDEBUG("%p %ld", td->orig_buffer, len);
-    return td->orig_buffer == NULL;
-}
-
-static void fio_unvme_iomem_free(struct thread_data *td)
-{
-    TDEBUG("%p", td->orig_buffer);
-    unvme_free(unvme.ns, td->orig_buffer);
-}
-
-/*
- * The ->get_file_size() is called once for every job (i.e. numjobs)
- * before all other functions.  This is called after ->setup() but
- * is simpler to initialize here since we only care about the device name
- * (given as file_name) and just have to specify the device size.
- */
-static int fio_unvme_get_file_size(struct thread_data *td, struct fio_file *f)
-{
-    TDEBUG("file=%s", f->file_name);
-    if (!fio_file_size_known(f)) {
-        do_unvme_init(f->file_name, td);
-        f->filetype = FIO_TYPE_CHAR;
-        f->real_file_size = unvme.ns->blockcount * unvme.ns->blocksize;
-        fio_file_set_size_known(f);
-    }
-    return 0;
-}
-
 
 // UNVMe options.
 static struct fio_option fio_unvme_options[] = {
@@ -314,16 +325,16 @@ static struct fio_option fio_unvme_options[] = {
 struct ioengine_ops ioengine = {
     .name               = "unvme_fio",
     .version            = FIO_IOOPS_VERSION,
-    .queue              = fio_unvme_queue,
-    .getevents          = fio_unvme_getevents,
-    .event              = fio_unvme_event,
+    .get_file_size      = fio_unvme_get_file_size,
     .init               = fio_unvme_init,
     .cleanup            = fio_unvme_cleanup,
     .open_file          = fio_unvme_open,
     .close_file         = fio_unvme_close,
-    .get_file_size      = fio_unvme_get_file_size,
     .iomem_alloc        = fio_unvme_iomem_alloc,
     .iomem_free         = fio_unvme_iomem_free,
+    .queue              = fio_unvme_queue,
+    .getevents          = fio_unvme_getevents,
+    .event              = fio_unvme_event,
     .flags              = FIO_NOEXTEND | FIO_RAWIO,
     .options            = fio_unvme_options,
     .option_struct_size = sizeof(unvme_options_t),
