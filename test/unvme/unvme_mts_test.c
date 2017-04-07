@@ -48,8 +48,6 @@
 #include "unvme.h"
 
 // Global variables
-static char* pciname;           ///< PCI device name
-static int nsid = 1;            ///< namespace id
 static int numses = 4;          ///< number of thread sessions
 static int qcount = 4;          ///< number of queues per session
 static int maxnlb = 2048;       ///< maximum number of blocks per IO
@@ -200,22 +198,17 @@ int main(int argc, char* argv[])
 {
     const char* usage =
 "Usage: %s [OPTION]... PCINAME\n\
-         -n       nsid (default to 1)\n\
-         -t       number of thread sessions (default 4)\n\
-         -q       number of queues per session (default 4)\n\
-         -m       maximum number of blocks per I/O (default 1024)\n\
-         PCINAME  PCI device name (as %%x:%%x.%%x format)\n";
+         -t THREADS     number of thread sessions (default 4)\n\
+         -q QCOUNT      number of queues per session (default 4)\n\
+         -m MAXBLOCKS   maximum number of blocks per I/O (default 1024)\n\
+         PCINAME        PCI device name (as %%x:%%x.%%x[/NSID] format)\n";
 
     char* prog = strrchr(argv[0], '/');
     prog = prog ? prog + 1 : argv[0];
 
     int opt, i;
-    while ((opt = getopt(argc, argv, "n:t:q:m:")) != -1) {
+    while ((opt = getopt(argc, argv, "t:q:m:")) != -1) {
         switch (opt) {
-        case 'n':
-            nsid = atoi(optarg);
-            if (nsid <= 0) errx(1, "n must be > 0");
-            break;
         case 't':
             numses = atoi(optarg);
             if (numses <= 0) errx(1, "t must be > 0");
@@ -233,15 +226,15 @@ int main(int argc, char* argv[])
         }
     }
     if (optind >= argc) errx(1, usage, prog);
-    pciname = argv[optind];
+    char* pciname = argv[optind];
 
     printf("MULTI-SESSION TEST BEGIN\n");
-    if (!(ns = unvme_open(pciname, nsid))) exit(1);
+    if (!(ns = unvme_open(pciname))) exit(1);
     if ((numses * qcount) > ns->maxqcount)
         errx(1, "%d threads %d queues each exceeds limit of %d queues",
               numses, qcount, ns->maxqcount);
-    printf("nsid=%d ses=%d qc=%d qs=%d maxq=%d maxnlb=%d cap=%#lx\n",
-           nsid, numses, qcount, ns->qsize, ns->maxqcount, maxnlb, ns->blockcount);
+    printf("pci=%s ses=%d qc=%d qs=%d maxq=%d maxnlb=%d cap=%#lx\n",
+           ns->device, numses, qcount, ns->qsize, ns->maxqcount, maxnlb, ns->blockcount);
     if ((u64)(numses * qcount * ns->qsize * maxnlb) > ns->blockcount)
         errx(1, "not enough disk space");
 

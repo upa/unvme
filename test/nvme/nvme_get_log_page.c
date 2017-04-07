@@ -113,7 +113,7 @@ void print_firmware_slot(void* buf)
  */
 int main(int argc, char* argv[])
 {
-    const char* usage = "Usage: %s pciname nsid log_page_id\n\
+    const char* usage = "Usage: %s PCINAME NSID LOG_PAGE_ID\n\
 where\n\
       log_page_id 1 = error information\n\
       log_page_id 2 = SMART / Health information\n\

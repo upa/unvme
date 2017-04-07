@@ -57,19 +57,20 @@ for i in $@; do
         DRIVER="nvme"
         ;;
 
-    [0-9A-Fa-f][0-9A-Fa-f]:[0-9A-Fa-f][0-9A-Fa-f].[0-9A-Fa-f])
-        if [ -z "$(lspci -n | grep $i\ 0108:)" ]; then
-            echo "Device $i is not SSD"
+    [0-9A-Fa-f][0-9A-Fa-f]:[0-9A-Fa-f][0-9A-Fa-f].[0-9A-Fa-f]*)
+        pcidev=$(echo $i | cut -d/ -f1)
+        if [ -z "$(lspci -n | grep ${pcidev}\ 0108:)" ]; then
+            echo "Device ${pcidev} is not SSD"
             exit 1
         fi
-        if [ ! -e /sys/bus/pci/drivers/vfio-pci/0000:$i ]; then
-            echo "Device $i is not uNVMe enabled"
+        if [ ! -e /sys/bus/pci/drivers/vfio-pci/0000:${pcidev} ]; then
+            echo "Device ${pcidev} is not uNVMe enabled"
             exit 1
         fi
         if [ -z ${IOENGINE} ]; then
             IOENGINE=../ioengine/unvme_fio
         fi
-        FILENAME=$(echo $i | tr : .)
+        FILENAME=$(echo $i | tr :/ .)
         DRIVER="unvme"
         ;;
 
@@ -114,11 +115,7 @@ for rw in ${RW}; do
                 fi
             fi
 
-            if [ -z "${NSID}" ]; then
-                echo "${FIOTEXT}" | sed -e "s?IOENGINE?${IOENGINE}?g;s?RAMPTIME?${RAMPTIME}?g;s?RUNTIME?${RUNTIME}?g;s?BLOCKSIZE?${BLOCKSIZE}?g;s?FILENAME?${FILENAME}?g;s?RW?${rw}?g;s?NUMJOBS?${qc}?g;s?IODEPTH?${qd}?g" > ${FIOFILE}
-            else
-                echo "${FIOTEXT}" | sed -e "s?IOENGINE?${IOENGINE}?g;s?RAMPTIME?${RAMPTIME}?g;s?RUNTIME?${RUNTIME}?g;s?BLOCKSIZE?${BLOCKSIZE}?g;s?FILENAME?${FILENAME}\nnsid=${NSID}?g;s?RW?${rw}?g;s?NUMJOBS?${qc}?g;s?IODEPTH?${qd}?g" > ${FIOFILE}
-            fi
+            echo "${FIOTEXT}" | sed -e "s?IOENGINE?${IOENGINE}?g;s?RAMPTIME?${RAMPTIME}?g;s?RUNTIME?${RUNTIME}?g;s?BLOCKSIZE?${BLOCKSIZE}?g;s?FILENAME?${FILENAME}?g;s?RW?${rw}?g;s?NUMJOBS?${qc}?g;s?IODEPTH?${qd}?g" > ${FIOFILE}
 
             echo "========"
             cmd /bin/uname -a | tee -a ${OUTFILE}

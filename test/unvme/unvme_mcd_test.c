@@ -51,7 +51,6 @@
 typedef struct {
     char            pciname[16];    ///< PCI name
     int             pci;            ///< PCI device id
-    int             nsid;           ///< namespace id
     int             ins;            ///< instance (start with 0)
     int             inscount;       ///< instance count
     pthread_t       thread;         ///< session thread
@@ -71,15 +70,15 @@ void* test_session(void* arg)
     ses_t* ses = arg;
     const unvme_ns_t* ns;
 
-    printf("Test device %s/%x started\n", ses->pciname, ses->nsid);
+    printf("Test device %s started\n", ses->pciname);
     sem_post(&sm_ready);
     sem_wait(&sm_start);
 
-    if (!(ns = unvme_open(ses->pciname, ses->nsid))) exit(1);
+    if (!(ns = unvme_open(ses->pciname))) exit(1);
 
     u64 datasize = 256*1024*1024;
     u64 nlb = datasize >> ns->blockshift;
-    u64 slba = nlb * ses->nsid;
+    u64 slba = nlb * ns->id;
     u64* wbuf = unvme_alloc(ns, datasize);
     u64* rbuf = unvme_alloc(ns, datasize);
     if (!wbuf || !rbuf) errx(1, "unvme_alloc %ld failed", datasize);
@@ -95,24 +94,24 @@ void* test_session(void* arg)
     while (!error && qcount--) {
         u64 lba = slba + q;
         u64 nb = nlb - q;
-        printf("Test %s/%x q%d lba %#lx nlb %#lx pat 0x%08lX\n",
-                ses->pciname, ses->nsid, q, lba, nb, pat);
+        printf("Test %s q%d lba %#lx nlb %#lx pat 0x%08lX\n",
+                ses->pciname, q, lba, nb, pat);
         if (unvme_write(ns, q, wbuf, lba, nb)) {
-            printf("ERROR: unvme_write %s/%x q%d lba %#lx nlb %#lx\n",
-                   ses->pciname, ses->nsid, q, lba, nb);
+            printf("ERROR: unvme_write %s q%d lba %#lx nlb %#lx\n",
+                   ses->pciname, q, lba, nb);
             error = ses->pci;
             break;
         }
         memset(rbuf, 0, datasize);
         if (unvme_read(ns, q, rbuf, lba, nb)) {
-            printf("ERROR: unvme_read %s/%x q%d lba %#lx nlb %#lx\n",
-                   ses->pciname, ses->nsid, q, lba, nb);
+            printf("ERROR: unvme_read %s q%d lba %#lx nlb %#lx\n",
+                   ses->pciname, q, lba, nb);
             error = ses->pci;
             break;
         }
         if (memcmp(wbuf, rbuf, nb << ns->blockshift)) {
-            printf("ERROR: data mismatch %s/%x q%d lba %#lx nlb %#lx\n",
-                   ses->pciname, ses->nsid, q, lba, nb);
+            printf("ERROR: data mismatch %s q%d lba %#lx nlb %#lx\n",
+                   ses->pciname, q, lba, nb);
             error = ses->pci;
             break;
         }
@@ -124,9 +123,9 @@ void* test_session(void* arg)
     unvme_close(ns);
 
     if (!error)
-        printf("Test device %s/%x completed\n", ses->pciname, ses->nsid);
+        printf("Test device %s completed\n", ses->pciname);
     else if (error == ses->pci)
-        printf("Test device %s/%x failed\n", ses->pciname, ses->nsid);
+        printf("Test device %s failed\n", ses->pciname);
     return 0;
 }
 
@@ -152,9 +151,8 @@ int main(int argc, char* argv[])
         int b, d, f, n = 1;
         if ((sscanf(argv[i+1], "%x:%x.%x/%x", &b, &d, &f, &n) != 4) &&
             (sscanf(argv[i+1], "%x:%x.%x", &b, &d, &f) != 3)) errx(1, usage);
-        sprintf(ses[i].pciname, "%02x:%02x.%x", b, d, f);
+        sprintf(ses[i].pciname, "%02x:%02x.%x/%x", b, d, f, n);
         ses[i].pci = (b << 16) | (d << 8) | f;
-        ses[i].nsid = n;
         ses[i].ins = 0;
         ses[i].inscount = 1;
     }

@@ -49,21 +49,16 @@ int main(int argc, char** argv)
 {
     const char* usage =
     "Usage: %s [OPTION]... pciname\n\
-             -n NSID    nsid (default 1)\n\
              -s SIZE    data size (default 100M)\n\
-             pciname    PCI device name (as %%x:%%x.%%x format)\n";
+             PCINAME    PCI device name (as %%x:%%x.%%x[/NSID] format)\n";
 
-    int opt, nsid = 1;
+    int opt;
     u64 datasize = 100 * 1024 * 1024;
     const char* prog = strrchr(argv[0], '/');
     prog = prog ? prog + 1 : argv[0];
 
-    while ((opt = getopt(argc, argv, "n:s:")) != -1) {
+    while ((opt = getopt(argc, argv, "s:")) != -1) {
         switch (opt) {
-        case 'n':
-            nsid = atoi(optarg);
-            if (nsid <= 0) errx(1, "nsid must be > 0");
-            break;
         case 's':
             datasize = atol(optarg);
             int l = strlen(optarg) - 1;
@@ -79,10 +74,10 @@ int main(int argc, char** argv)
     char* pciname = argv[optind];
 
     printf("SIMPLE WRITE-READ-VERIFY TEST BEGIN\n");
-    const unvme_ns_t* ns = unvme_open(pciname, nsid);
+    const unvme_ns_t* ns = unvme_open(pciname);
     if (!ns) exit(1);
-    printf("nsid=%d qc=%d qs=%d ds=%ld cap=%ld mbio=%d\n",
-            nsid, ns->qcount, ns->qsize, datasize, ns->blockcount, ns->maxbpio);
+    printf("pci=%s qc=%d qs=%d ds=%ld cap=%ld mbio=%d\n",
+            ns->device, ns->qcount, ns->qsize, datasize, ns->blockcount, ns->maxbpio);
 
     void* buf = unvme_alloc(ns, datasize);
     if (!buf) errx(1, "unvme_alloc %ld failed", datasize);

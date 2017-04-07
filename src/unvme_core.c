@@ -304,7 +304,7 @@ static void unvme_adminq_create(unvme_device_t* dev, int qsize)
  */
 static void unvme_adminq_delete(unvme_device_t* dev)
 {
-    DEBUG_FN("%x:", dev->vfiodev.pci);
+    DEBUG_FN("%x", dev->vfiodev.pci);
     if (dev->asqdma) vfio_dma_free(dev->asqdma);
     if (dev->acqdma) vfio_dma_free(dev->acqdma);
 }
@@ -392,6 +392,8 @@ static void unvme_ns_init(unvme_ns_t* ns, int nsid)
     ns->maxbpio = ns->maxppio * ns->nbpp;
     vfio_dma_free(dma);
 
+    sprintf(ns->device, "%02x:%02x.%x/%d",
+            ns->pci >> 16, (ns->pci >> 8) & 0xff, ns->pci & 0xff, nsid);
     DEBUG_FN("%x: nsid=%d qc=%d qd=%d bs=%d bc=%lu", ns->pci, nsid,
              ns->qcount, ns->qsize, ns->blocksize, ns->blockcount);
 }
@@ -403,7 +405,7 @@ static void unvme_cleanup(unvme_session_t* ses)
 {
     unvme_device_t* dev = ses->dev;
     if (--dev->refcount == 0) {
-        INFO_FN("%x:", dev->vfiodev.pci);
+        DEBUG_FN("%s", ses->ns.device);
         int q;
         for (q = 0; q < dev->ns.qcount; q++) unvme_ioq_delete(dev, q);
         unvme_adminq_delete(dev);
@@ -523,7 +525,7 @@ unvme_ns_t* unvme_do_open(int pci, int nsid, int qcount, int qsize)
     unvme_ns_init(&ses->ns, nsid);
     LIST_ADD(unvme_ses, ses);
 
-    INFO_FN("%x: (%.40s) is ready", ses->ns.pci, ses->ns.mn);
+    INFO_FN("%s: (%.40s) is ready", ses->ns.device, ses->ns.mn);
     unvme_unlockw(&unvme_lock);
     return &ses->ns;
 }

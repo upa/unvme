@@ -44,8 +44,8 @@ void print_controller(void* buf)
 {
     nvme_identify_ctlr_t* ctlr = buf;
 
-    printf("Identify Controller\n");
-    printf("===================\n");
+    printf("Identify Controller 0x0\n");
+    printf("=======================\n");
     printf("vid      : %#x\n", ctlr->vid);
     printf("ssvid    : %#x\n", ctlr->ssvid);
     printf("sn       : %.20s\n", ctlr->sn);
@@ -72,7 +72,7 @@ void print_controller(void* buf)
     printf("vwc      : %#x\n", ctlr->vwc);
     printf("awun     : %#x\n", ctlr->awun);
     printf("awupf    : %#x\n", ctlr->awupf);
-    printf("nvscc    : %#x\n", ctlr->nvscc);
+    printf("nvscc    : %#x\n\n", ctlr->nvscc);
 }
 
 /**
@@ -82,8 +82,8 @@ void print_namespace(void* buf, int nsid)
 {
     nvme_identify_ns_t* ns = buf;
 
-    printf("\nIdentify Namespace %#x\n", nsid);
-    printf("====================\n");
+    printf("Identify Namespace %#x\n", nsid);
+    printf("======================\n");
     printf("nsze     : %#lx\n", ns->nsze);
     printf("ncap     : %#lx\n", ns->ncap);
     printf("nuse     : %#lx\n", ns->nuse);
@@ -107,7 +107,7 @@ void print_namespace(void* buf, int nsid)
  */
 int main(int argc, char* argv[])
 {
-    const char* usage = "Usage: %s pciname [nsid]\n";
+    const char* usage = "Usage: %s PCINAME [NSID]\n";
 
     if (argc < 2) errx(1, usage, argv[0]);
     int nsid = 1;
@@ -123,6 +123,10 @@ int main(int argc, char* argv[])
     if (nvme_acmd_identify(nvmedev, 0, dma->addr, dma->addr + 4096))
         errx(1, "nvme_acmd_identify 0");
     print_controller(dma->buf);
+
+    nvme_identify_ctlr_t* ctlr = dma->buf;
+    if (nsid > ctlr->nn)
+        errx(1, "invalid nsid %d", nsid);
     if (nvme_acmd_identify(nvmedev, nsid, dma->addr, dma->addr + 4096))
         errx(1, "nvme_acmd_identify %d", nsid);
     print_namespace(dma->buf, nsid);

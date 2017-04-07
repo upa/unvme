@@ -9,7 +9,8 @@ initialize the NVMe device(s) and then can perform I/O directly.
 
 Note that an application can access multiple devices simultaneously, but 
 a device can only be accessed by one application at any given time.
-Device name is to be specified in PCI format, e.g. 0a:00.0.
+Device name is to be specified in PCI format with optional NSID
+(e.g. 0a:00.0 or 0a:00.0/1). NSID 1 is assumed if /NSID is omitted.
 
 User space driver, in general, is a specially customized solution.
 Applications must use the provided APIs to access the device instead of
@@ -17,13 +18,15 @@ the system provided POSIX APIs.
 
 
 A design note:  UNVMe is designed modularly with independent components
-including VFIO (unvme_vfio.c) and NVME (unvme_nvme.c) supported functions,
-where the driver library itself is built on top of those modules.
-The test commands under test/nvme are built on those modules without
-dependency on the UNVMe driver and library.  They are served as examples
-for building other NVMe admin commands.  The tests under test/unvme can
-serve as examples for developing applications using UNVMe library.
+including NVME (unvme_nvme.h) and VFIO (unvme_vfio.h), in which the driver
+itself is built on top of those modules.
 
+The programs under test/nvme are built directly on those modules independent
+of the UNVMe driver.  They are served as examples for building individual
+NVMe admin commands.
+
+The programs under test/unvme are examples for developing applications
+using the UNVMe interface (unvme.h).
 
 
 
@@ -80,7 +83,7 @@ To setup a device for UNVMe usage (do once before running applications), run:
 
     By default, all NVMe devices found in the system will be bound to the
     VFIO driver enabling them for UNVMe usage.  Specific PCI device(s)
-    may also be specified for binding, e.g. unvme-setup bind 07:00.0.
+    may also be specified for binding, e.g. unvme-setup bind 0a:00.0.
 
 
 To reset device(s) to the NVMe kernel space driver, run:
@@ -96,7 +99,7 @@ To run UNVMe tests, specify the device(s) with command:
     $ test/unvme-test 0a:00.0 0b:00.0
 
 
-Commands under test/nvme may also be invoked individually, e.g.:
+The commands under test/nvme may also be invoked individually, e.g.:
 
     $ test/nvme/nvme_identify 0a:00.0
     $ test/nvme/nvme_get_features 0a:00.0
@@ -193,3 +196,4 @@ Note that a user space filesystem, namely UNFS, has also been developed
 at Micron to work with the UNVMe driver.  Such available filesystem enables
 major applications like MongoDB to work with UNVMe driver.
 See https://github.com/MicronSSD/unfs.git for details.
+

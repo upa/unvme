@@ -42,7 +42,7 @@
  */
 int main(int argc, char* argv[])
 {
-    const char* usage = "Usage: %s pciname nsid feature_id feature_arg\n";
+    const char* usage = "Usage: %s PCINAME NSID FEATURE_ID FEATURE_ARG\n";
 
     if (argc < 5) errx(1, usage, argv[0]);
 

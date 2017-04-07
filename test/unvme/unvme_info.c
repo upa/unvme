@@ -45,17 +45,11 @@
 
 int main(int argc, char** argv)
 {
-    const char* usage = "Usage: %s pciname [nsid]\n";
-
     const char* prog = strrchr(argv[0], '/');
     prog = prog ? prog + 1 : argv[0];
-    int nsid = 1;
+    if (argc < 2) errx(1, "Usage: %s PCINAME\n", prog);
 
-    if (argc < 2) errx(1, usage, prog);
-    if (argc > 2) nsid = atoi(argv[2]);
-    char* pciname = argv[1];
-
-    const unvme_ns_t* ns = unvme_open(pciname, nsid);
+    const unvme_ns_t* ns = unvme_open(argv[1]);
     printf("Namespace:          %d\n", ns->id);
     printf("Vendor ID:          %#x\n", ns->vid);
     printf("Model number:       %.40s\n", ns->mn);

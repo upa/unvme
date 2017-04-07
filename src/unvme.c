@@ -37,46 +37,38 @@
 #include "unvme_core.h"
 
 /**
- * Open a client session.
- * @param   pciname     PCI device name (as BB:DD.F format)
- * @param   nsid        namespace id
- * @return  namespace pointer or NULL if error.
- */
-const unvme_ns_t* unvme_open(const char* pciname, int nsid)
-{
-    int b, d, f;
-    if (sscanf(pciname, "%x:%x.%x", &b, &d, &f) != 3) {
-        ERROR("invalid PCI %s (expect %%x:%%x.%%x format)", pciname);
-        return NULL;
-    }
-    int pci = (b << 16) + (d << 8) + f;
-
-    return unvme_do_open(pci, nsid, 0, 0);
-}
-
-/**
  * Open a client session with specified number of IO queues and queue size.
- * @param   pciname     PCI device name (as BB:DD.F format)
- * @param   nsid        namespace id
+ * @param   pciname     PCI device name (as BB:DD.F[/NSID] format)
  * @param   qcount      number of io queues
  * @param   qsize       io queue size
  * @return  namespace pointer or NULL if error.
  */
-const unvme_ns_t* unvme_openq(const char* pciname, int nsid, int qcount, int qsize)
+const unvme_ns_t* unvme_openq(const char* pciname, int qcount, int qsize)
 {
-    if (nsid < 1 || qcount < 0 || qsize < 0 || qsize == 1) {
-        ERROR("invalid nsid %d qcount %d or qsize %d", nsid, qcount, qsize);
+    if (qcount < 0 || qsize < 0 || qsize == 1) {
+        ERROR("invalid qcount %d or qsize %d", qcount, qsize);
         return NULL;
     }
 
-    int b, d, f;
-    if (sscanf(pciname, "%x:%x.%x", &b, &d, &f) != 3) {
-        ERROR("invalid PCI %s (expect %%x:%%x.%%x format)", pciname);
+    int b, d, f, nsid = 1;
+    if ((sscanf(pciname, "%x:%x.%x/%x", &b, &d, &f, &nsid) != 4) &&
+        (sscanf(pciname, "%x:%x.%x", &b, &d, &f) != 3)) {
+        ERROR("invalid PCI %s (expect %%x:%%x.%%x[/NSID] format)", pciname);
         return NULL;
     }
     int pci = (b << 16) + (d << 8) + f;
 
     return unvme_do_open(pci, nsid, qcount, qsize);
+}
+
+/**
+ * Open a client session.
+ * @param   pciname     PCI device name (as BB:DD.F[/NSID] format)
+ * @return  namespace pointer or NULL if error.
+ */
+const unvme_ns_t* unvme_open(const char* pciname)
+{
+    return unvme_openq(pciname, 0, 0);
 }
 
 /**

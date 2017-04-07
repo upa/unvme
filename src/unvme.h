@@ -59,6 +59,7 @@ typedef struct _unvme_ns {
     u32                 pci;        ///< PCI device id
     u16                 id;         ///< namespace id
     u16                 vid;        ///< vendor id
+    char                device[16]; ///< PCI device name (BB:DD.F/N)
     char                mn[40];     ///< model number
     char                sn[20];     ///< serial number
     char                fr[8];      ///< firmware revision
@@ -82,8 +83,8 @@ typedef struct _unvme_ns {
 typedef void*           unvme_iod_t;
 
 // Export functions
-const unvme_ns_t* unvme_open(const char* pciname, int nsid);
-const unvme_ns_t* unvme_openq(const char* pciname, int nsid, int qcount, int qsize);
+const unvme_ns_t* unvme_open(const char* pciname);
+const unvme_ns_t* unvme_openq(const char* pciname, int qcount, int qsize);
 int unvme_close(const unvme_ns_t* ns);
 
 void* unvme_alloc(const unvme_ns_t* ns, u64 size);

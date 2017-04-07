@@ -55,21 +55,16 @@ int main(int argc, char** argv)
 {
     const char* usage =
     "Usage: %s [OPTION]... PCINAME\n\
-             -n       nsid (default 1)\n\
-             -r       ratio (default 4)\n\
-             -v       verbose\n\
-             PCINAME  PCI device name (as %%x:%%x.%%x format)\n";
+             -v         verbose\n\
+             -r RATIO   max blocks per I/O ratio (default 4)\n\
+             PCINAME    PCI device name (as %%x:%%x.%%x[/NSID] format)\n";
 
-    int opt, nsid=1, ratio=4, verbose=0;
+    int opt, ratio=4, verbose=0;
     const char* prog = strrchr(argv[0], '/');
     prog = prog ? prog + 1 : argv[0];
 
-    while ((opt = getopt(argc, argv, "n:r:v")) != -1) {
+    while ((opt = getopt(argc, argv, "r:v")) != -1) {
         switch (opt) {
-        case 'n':
-            nsid = atoi(optarg);
-            if (nsid <= 0) errx(1, "n must be > 0");
-            break;
         case 'r':
             ratio = atoi(optarg);
             if (ratio <= 0) errx(1, "r must be > 0");
@@ -85,15 +80,15 @@ int main(int argc, char** argv)
     char* pciname = argv[optind];
 
     printf("API TEST BEGIN\n");
-    const unvme_ns_t* ns = unvme_open(pciname, nsid);
+    const unvme_ns_t* ns = unvme_open(pciname);
     if (!ns) exit(1);
 
     // set large number of I/O and size
     int maxnlb = ratio * ns->maxbpio;
     int iocount = ratio * ns->qsize;
 
-    printf("open ns=%d qc=%d qs=%d maxnlb=%d/%d cap=%#lx\n",
-            nsid, ns->qcount, ns->qsize, maxnlb, ns->maxbpio, ns->blockcount);
+    printf("pci=%s qc=%d qs=%d maxnlb=%d/%d cap=%#lx\n",
+            ns->device, ns->qcount, ns->qsize, maxnlb, ns->maxbpio, ns->blockcount);
 
     int q, i, nlb;
     u64 slba, size, w, *p;

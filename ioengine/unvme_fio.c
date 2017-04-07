@@ -19,11 +19,6 @@
 #define TDEBUG(fmt, arg...) //printf("#%s.%d " fmt "\n", __func__, td->thread_number, ##arg)
 
 typedef struct {
-    void*               pad;
-    unsigned int        nsid;
-} unvme_options_t;
-
-typedef struct {
     struct io_u**       iocq;
     int                 head;
     int                 tail;
@@ -59,17 +54,16 @@ static int do_unvme_init(struct thread_data *td)
     pthread_mutex_lock(&unvme.mutex);
 
     if (!unvme.ns) {
-        unvme_options_t* opt = td->eo;
-        int nsid = opt->nsid ? opt->nsid : 1;
-
-        char* pciname = td->o.filename;
-        if (pciname[2] == '.') pciname[2] = ':';
-        unvme.ns = unvme_open(pciname, nsid);
+        char pciname[32];
+        int b, d, f, n=1;
+        sscanf(td->o.filename, "%x.%x.%x.%x", &b, &d, &f, &n);
+        sprintf(pciname, "%x:%x.%x/%x", b, d, f, n);
+        unvme.ns = unvme_open(pciname);
         if (!unvme.ns) error(1, 0, "unvme_open %s failed", pciname);
 
         unvme.ncpus = sysconf(_SC_NPROCESSORS_ONLN);
-        TDEBUG("unvme_open %s nsid=%d q=%dx%d ncpus=%d",
-               pciname, nsid, unvme.ns->qcount, unvme.ns->qsize, unvme.ncpus);
+        printf("unvme_open %s q=%dx%d ncpus=%d\n",
+               unvme.ns->device, unvme.ns->qcount, unvme.ns->qsize, unvme.ncpus);
 
         atexit(do_unvme_cleanup);
     }
@@ -302,24 +296,6 @@ static int fio_unvme_queue(struct thread_data *td, struct io_u *io_u)
 }
 
 
-// UNVMe options.
-static struct fio_option fio_unvme_options[] = {
-    {
-        .name       = "nsid",
-        .lname      = "NVMe nsid",
-        .type       = FIO_OPT_INT,
-        .off1       = offsetof(unvme_options_t, nsid),
-        .minval     = 1,
-        .maxval     = 0xffff,
-        .help       = "NVMe namespace id",
-        .category   = FIO_OPT_C_ENGINE,
-    },
-    {
-        .name   = NULL,
-    },
-};
-
-
 // Note that the structure is exported, so that fio can get it via
 // dlsym(..., "ioengine");
 struct ioengine_ops ioengine = {
@@ -336,7 +312,5 @@ struct ioengine_ops ioengine = {
     .getevents          = fio_unvme_getevents,
     .event              = fio_unvme_event,
     .flags              = FIO_NOEXTEND | FIO_RAWIO,
-    .options            = fio_unvme_options,
-    .option_struct_size = sizeof(unvme_options_t),
 };
 

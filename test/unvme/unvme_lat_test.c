@@ -61,7 +61,6 @@ typedef struct {
 
 // Global variables
 static const unvme_ns_t* ns;    ///< unvme namespace pointer
-static int nsid = 1;            ///< namespace id
 static int qcount = 1;          ///< queue count
 static int qsize = 8;           ///< queue size
 static int runtime = 15;        ///< run time in seconds
@@ -215,20 +214,15 @@ int main(int argc, char* argv[])
 {
     const char* usage =
 "Usage: %s [OPTION]... PCINAME\n\
-         -n       nsid (default to 1)\n\
-         -t       run time in seconds (default 15)\n\
-         PCINAME  PCI device name (as %%x:%%x.%%x) format\n";
+         -t SECONDS run time in seconds (default 15)\n\
+         PCINAME    PCI device name (as %%x:%%x.%%x[/NSID] format)\n";
 
     char* prog = strrchr(argv[0], '/');
     prog = prog ? prog + 1 : argv[0];
 
     int opt;
-    while ((opt = getopt(argc, argv, "n:t:")) != -1) {
+    while ((opt = getopt(argc, argv, "t:")) != -1) {
         switch (opt) {
-        case 'n':
-            nsid = atoi(optarg);
-            if (nsid <= 0) errx(1, "n must be > 0");
-            break;
         case 't':
             runtime = atoi(optarg);
             if (runtime <= 0) errx(1, "r must be > 0");
@@ -242,10 +236,11 @@ int main(int argc, char* argv[])
 
     printf("LATENCY TEST BEGIN\n");
     time_t tstart = time(0);
-    if (!(ns = unvme_open(pciname, nsid))) exit(1);
+    if (!(ns = unvme_open(pciname))) exit(1);
     last_lba = (ns->blockcount - ns->nbpp) & ~(u64)(ns->nbpp - 1);
-    printf("nsid=%d qc=%d qs=%d cap=%ld mbio=%d lastlba=%#lx\n",
-            nsid, qcount, qsize, ns->blockcount, ns->maxbpio, last_lba);
+
+    printf("pci=%s qc=%d qs=%d cap=%ld mbio=%d lastlba=%#lx\n",
+            ns->device, qcount, qsize, ns->blockcount, ns->maxbpio, last_lba);
 
     ses = calloc(qcount, sizeof(pthread_t));
 
