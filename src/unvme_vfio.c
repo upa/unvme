@@ -140,7 +140,7 @@ static vfio_mem_t* vfio_mem_alloc(vfio_device_t* dev, size_t size, void* pmb)
         dev->memlist->prev = mem;
     }
     dev->iovanext = map.iova + size;
-    DEBUG_FN("%x: %#lx %#lx %#lx", dev->pci, map.iova, map.size, dev->iovanext);
+    DEBUG_FN("%x %#lx %#lx %#lx", dev->pci, map.iova, map.size, dev->iovanext);
     pthread_mutex_unlock(&dev->lock);
 
     return mem;
@@ -183,7 +183,7 @@ int vfio_mem_free(vfio_mem_t* mem)
         if (dev->memlist == mem) dev->memlist = mem->next;
         dev->iovanext = dev->memlist->prev->dma.addr + dev->memlist->prev->dma.size;
     }
-    DEBUG_FN("%x: %#lx %ld %#lx", dev->pci, unmap.iova, unmap.size, dev->iovanext);
+    DEBUG_FN("%x %#lx %ld %#lx", dev->pci, unmap.iova, unmap.size, dev->iovanext);
     pthread_mutex_unlock(&dev->lock);
 
     free(mem);
@@ -244,7 +244,7 @@ int vfio_dma_free(vfio_dma_t* dma)
  */
 void vfio_msix_enable(vfio_device_t* dev, int start, int count, __s32* efds)
 {
-    DEBUG_FN("%x: start=%d count=%d", dev->pci, start, count);
+    DEBUG_FN("%x start=%d count=%d", dev->pci, start, count);
 
     if (dev->msixsize == 0)
         FATAL("no MSIX support");
@@ -359,7 +359,7 @@ vfio_device_t* vfio_create(vfio_device_t* dev, int pci)
     if (ioctl(dev->fd, VFIO_DEVICE_GET_INFO, &dev_info) < 0)
         FATAL("ioctl VFIO_DEVICE_GET_INFO");
 
-    DEBUG_FN("%x: flags=%u regions=%u irqs=%u",
+    DEBUG_FN("%x flags=%u regions=%u irqs=%u",
              pci, dev_info.flags, dev_info.num_regions, dev_info.num_irqs);
 
     for (i = 0; i < dev_info.num_regions; i++) {
@@ -367,7 +367,7 @@ vfio_device_t* vfio_create(vfio_device_t* dev, int pci)
 
         if (ioctl(dev->fd, VFIO_DEVICE_GET_REGION_INFO, &reg)) continue;
 
-        DEBUG_FN("%x: region=%d flags=%#x off=%#llx size=%#llx",
+        DEBUG_FN("%x region=%d flags=%#x off=%#llx size=%#llx",
                  pci, reg.index, reg.flags, reg.offset, reg.size);
 
         if (i == VFIO_PCI_CONFIG_REGION_INDEX) {
@@ -396,7 +396,7 @@ vfio_device_t* vfio_create(vfio_device_t* dev, int pci)
                 cap = config[cap+1];
             }
 
-            DEBUG_FN("%x: vendor=%#x cmd=%#x msix=%d device=%#x rev=%d",
+            DEBUG_FN("%x vendor=%#x cmd=%#x msix=%d device=%#x rev=%d",
                      pci, *vendor, *cmd, dev->msixsize,
                      (__u16*)(config + PCI_DEVICE_ID), config[PCI_REVISION_ID]);
         }
@@ -406,7 +406,7 @@ vfio_device_t* vfio_create(vfio_device_t* dev, int pci)
         struct vfio_irq_info irq = { .argsz = sizeof(irq), .index = i };
 
         if (ioctl(dev->fd, VFIO_DEVICE_GET_IRQ_INFO, &irq)) continue;
-        DEBUG_FN("%x: irq=%s count=%d flags=%#x",
+        DEBUG_FN("%x irq=%s count=%d flags=%#x",
                  pci, vfio_irq_names[i], irq.count, irq.flags);
         if (i == VFIO_PCI_MSIX_IRQ_INDEX && irq.count != dev->msixsize)
             FATAL("VFIO_DEVICE_GET_IRQ_INFO MSIX count %d != %d", irq.count, dev->msixsize);

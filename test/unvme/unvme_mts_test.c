@@ -50,7 +50,7 @@
 // Global variables
 static int numses = 4;          ///< number of thread sessions
 static int qcount = 4;          ///< number of queues per session
-static int maxnlb = 2048;       ///< maximum number of blocks per IO
+static int maxnlb = 1024;       ///< maximum number of blocks per IO
 static sem_t sm_ready;          ///< semaphore for ready
 static sem_t sm_start;          ///< semaphore for start
 static const unvme_ns_t* ns;    ///< driver namespace handle
@@ -200,7 +200,7 @@ int main(int argc, char* argv[])
 "Usage: %s [OPTION]... PCINAME\n\
          -t THREADS     number of thread sessions (default 4)\n\
          -q QCOUNT      number of queues per session (default 4)\n\
-         -m MAXBLOCKS   maximum number of blocks per I/O (default 1024)\n\
+         -m MAXNLB      maximum number of blocks per I/O (default 1024)\n\
          PCINAME        PCI device name (as %%x:%%x.%%x[/NSID] format)\n";
 
     char* prog = strrchr(argv[0], '/');
@@ -233,7 +233,7 @@ int main(int argc, char* argv[])
     if ((numses * qcount) > ns->maxqcount)
         errx(1, "%d threads %d queues each exceeds limit of %d queues",
               numses, qcount, ns->maxqcount);
-    printf("pci=%s ses=%d qc=%d qs=%d maxq=%d maxnlb=%d cap=%#lx\n",
+    printf("%s ses=%d qc=%d qs=%d maxq=%d maxnlb=%d cap=%#lx\n",
            ns->device, numses, qcount, ns->qsize, ns->maxqcount, maxnlb, ns->blockcount);
     if ((u64)(numses * qcount * ns->qsize * maxnlb) > ns->blockcount)
         errx(1, "not enough disk space");

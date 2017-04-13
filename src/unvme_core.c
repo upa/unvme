@@ -145,7 +145,7 @@ static int unvme_complete_io(unvme_ioq_t* ioq, int timeout)
         if (endtsc == 0) endtsc = rdtsc() + timeout * rdtsc_second();
         else sched_yield();
     } while (rdtsc() < endtsc);
-    if (cid < 0) return -1;
+    if (cid < 0) return cid;
 
     // find the pending cid in the descriptor list to clear it
     unvme_desc_t* desc = ioq->descnext;
@@ -289,7 +289,7 @@ static int unvme_submit_io(const unvme_ns_t* ns, unvme_desc_t* desc,
  */
 static void unvme_adminq_create(unvme_device_t* dev, int qsize)
 {
-    DEBUG_FN("%x: qd=%d", dev->vfiodev.pci, qsize);
+    DEBUG_FN("%x qd=%d", dev->vfiodev.pci, qsize);
     dev->asqdma = vfio_dma_alloc(&dev->vfiodev, qsize * sizeof(nvme_sq_entry_t));
     dev->acqdma = vfio_dma_alloc(&dev->vfiodev, qsize * sizeof(nvme_cq_entry_t));
     if (!dev->asqdma || !dev->acqdma) FATAL("vfio_dma_alloc");
@@ -338,7 +338,7 @@ static void unvme_ioq_create(unvme_device_t* dev, int q)
     ioq->prplist = vfio_dma_alloc(&dev->vfiodev, qsize << dev->ns.pageshift);
     if (!ioq->prplist) FATAL("vfio_dma_alloc");
 
-    DEBUG_FN("%x: q=%d qd=%d db=%#04lx", dev->vfiodev.pci, ioq->nvmeq.id, qsize,
+    DEBUG_FN("%x q=%d qd=%d db=%#04lx", dev->vfiodev.pci, ioq->nvmeq.id, qsize,
              (u64)ioq->nvmeq.sq_doorbell - (u64)dev->nvmedev.reg);
 }
 
@@ -349,7 +349,7 @@ static void unvme_ioq_create(unvme_device_t* dev, int q)
  */
 static void unvme_ioq_delete(unvme_device_t* dev, int q)
 {
-    DEBUG_FN("%x: q=%d", dev->vfiodev.pci, q + 1);
+    DEBUG_FN("%x q=%d", dev->vfiodev.pci, q + 1);
     unvme_ioq_t* ioq = &dev->ioqs[q];
 
     // free all descriptors
@@ -392,10 +392,9 @@ static void unvme_ns_init(unvme_ns_t* ns, int nsid)
     ns->maxbpio = ns->maxppio * ns->nbpp;
     vfio_dma_free(dma);
 
-    sprintf(ns->device, "%02x:%02x.%x/%d",
-            ns->pci >> 16, (ns->pci >> 8) & 0xff, ns->pci & 0xff, nsid);
-    DEBUG_FN("%x: nsid=%d qc=%d qd=%d bs=%d bc=%lu", ns->pci, nsid,
-             ns->qcount, ns->qsize, ns->blocksize, ns->blockcount);
+    sprintf(ns->device + strlen(ns->device), "/%d", nsid);
+    DEBUG_FN("%s qc=%d qd=%d bs=%d bc=%lu mbio=%d", ns->device, ns->qcount,
+             ns->qsize, ns->blocksize, ns->blockcount, ns->maxbpio);
 }
 
 /**
@@ -479,6 +478,7 @@ unvme_ns_t* unvme_do_open(int pci, int nsid, int qcount, int qsize)
         unvme_ns_t* ns = &dev->ns;
         ns->pci = pci;
         ns->id = 0;
+        sprintf(ns->device, "%02x:%02x.%x", pci >> 16, (pci >> 8) & 0xff, pci & 0xff);
         ns->maxqsize = dev->nvmedev.maxqsize;
         ns->pageshift = dev->nvmedev.pageshift;
         ns->pagesize = 1 << ns->pageshift;
@@ -525,7 +525,7 @@ unvme_ns_t* unvme_do_open(int pci, int nsid, int qcount, int qsize)
     unvme_ns_init(&ses->ns, nsid);
     LIST_ADD(unvme_ses, ses);
 
-    INFO_FN("%s: (%.40s) is ready", ses->ns.device, ses->ns.mn);
+    INFO_FN("%s (%.40s) is ready", ses->ns.device, ses->ns.mn);
     unvme_unlockw(&unvme_lock);
     return &ses->ns;
 }
@@ -537,7 +537,7 @@ unvme_ns_t* unvme_do_open(int pci, int nsid, int qcount, int qsize)
  */
 int unvme_do_close(const unvme_ns_t* ns)
 {
-    DEBUG_FN("%x: %d", ns->pci, ns->id);
+    DEBUG_FN("%s", ns->device);
     unvme_session_t* ses = (unvme_session_t*)ns->ses;
     if (ses->ns.pci != ses->dev->vfiodev.pci) return -1;
     unvme_lockw(&unvme_lock);
@@ -554,7 +554,7 @@ int unvme_do_close(const unvme_ns_t* ns)
  */
 void* unvme_do_alloc(const unvme_ns_t* ns, u64 size)
 {
-    DEBUG_FN("%x: %#lx", ns->pci, size);
+    DEBUG_FN("%s %#lx", ns->device, size);
     unvme_device_t* dev = ((unvme_session_t*)ns->ses)->dev;
     unvme_iomem_t* iomem = &dev->iomem;
     void* buf = NULL;
@@ -581,7 +581,7 @@ void* unvme_do_alloc(const unvme_ns_t* ns, u64 size)
  */
 int unvme_do_free(const unvme_ns_t* ns, void* buf)
 {
-    DEBUG_FN("%x: %p", ns->pci, buf);
+    DEBUG_FN("%s %p", ns->device, buf);
     unvme_device_t* dev = ((unvme_session_t*)ns->ses)->dev;
     unvme_iomem_t* iomem = &dev->iomem;
 

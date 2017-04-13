@@ -239,7 +239,7 @@ int main(int argc, char* argv[])
     if (!(ns = unvme_open(pciname))) exit(1);
     last_lba = (ns->blockcount - ns->nbpp) & ~(u64)(ns->nbpp - 1);
 
-    printf("pci=%s qc=%d qs=%d cap=%ld mbio=%d lastlba=%#lx\n",
+    printf("%s qc=%d qs=%d cap=%ld mbio=%d lastlba=%#lx\n",
             ns->device, qcount, qsize, ns->blockcount, ns->maxbpio, last_lba);
 
     ses = calloc(qcount, sizeof(pthread_t));

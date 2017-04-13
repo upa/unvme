@@ -48,7 +48,7 @@
 int main(int argc, char** argv)
 {
     const char* usage =
-    "Usage: %s [OPTION]... pciname\n\
+    "Usage: %s [OPTION]... PCINAME\n\
              -s SIZE    data size (default 100M)\n\
              PCINAME    PCI device name (as %%x:%%x.%%x[/NSID] format)\n";
 
@@ -76,7 +76,7 @@ int main(int argc, char** argv)
     printf("SIMPLE WRITE-READ-VERIFY TEST BEGIN\n");
     const unvme_ns_t* ns = unvme_open(pciname);
     if (!ns) exit(1);
-    printf("pci=%s qc=%d qs=%d ds=%ld cap=%ld mbio=%d\n",
+    printf("%s qc=%d qs=%d ds=%ld cap=%ld mbio=%d\n",
             ns->device, ns->qcount, ns->qsize, datasize, ns->blockcount, ns->maxbpio);
 
     void* buf = unvme_alloc(ns, datasize);

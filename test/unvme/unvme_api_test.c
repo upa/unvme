@@ -87,7 +87,7 @@ int main(int argc, char** argv)
     int maxnlb = ratio * ns->maxbpio;
     int iocount = ratio * ns->qsize;
 
-    printf("pci=%s qc=%d qs=%d maxnlb=%d/%d cap=%#lx\n",
+    printf("%s qc=%d qs=%d maxnlb=%d/%d cap=%#lx\n",
             ns->device, ns->qcount, ns->qsize, maxnlb, ns->maxbpio, ns->blockcount);
 
     int q, i, nlb;
