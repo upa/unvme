@@ -47,7 +47,10 @@ int main(int argc, char** argv)
 {
     const char* prog = strrchr(argv[0], '/');
     prog = prog ? prog + 1 : argv[0];
-    if (argc < 2) errx(1, "Usage: %s PCINAME\n", prog);
+    if (argc < 2)  {
+        warnx("Usage: %s PCINAME", prog);
+        exit(1);
+    }
 
     const unvme_ns_t* ns = unvme_open(argv[1]);
     printf("Namespace:          %d\n", ns->id);
@@ -55,12 +58,13 @@ int main(int argc, char** argv)
     printf("Model number:       %.40s\n", ns->mn);
     printf("Serial number:      %.20s\n", ns->sn);
     printf("FW revision:        %.8s\n", ns->fr);
-    printf("Block count:        %ld\n", ns->blockcount);
+    printf("Block count:        %#lx\n", ns->blockcount);
+    printf("Page count:         %#lx\n", ns->blockcount / ns->nbpp);
     printf("Block size:         %d\n", ns->blocksize);
     printf("Page size :         %d\n", ns->pagesize);
     printf("Blocks per page:    %d\n", ns->nbpp);
     printf("Max blocks per IO:  %d\n", ns->maxbpio);
-    printf("Max IO queues:      %d\n", ns->maxqcount);
+    printf("Max IO queue count: %d\n", ns->maxqcount);
     printf("Max IO queue size:  %d\n", ns->maxqsize);
     unvme_close(ns);
 

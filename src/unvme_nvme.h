@@ -188,7 +188,7 @@ typedef struct _nvme_command_common {
     u8                      rsvd : 6;   ///< reserved
     u16                     cid;        ///< command id
     u32                     nsid;       ///< namespace id
-    u32                     cdw2_3[2];  ///< reserved (cdw 2-3)
+    u64                     cdw2_3;     ///< reserved (cdw 2-3)
     u64                     mptr;       ///< metadata pointer
     u64                     prp1;       ///< PRP entry 1
     u64                     prp2;       ///< PRP entry 2
@@ -210,12 +210,20 @@ typedef struct _nvme_command_rw {
     u16                     elbatm;     ///< exp logical block app tag mask
 } nvme_command_rw_t;
 
+/// Admin and NVM Vendor Specific Command
+typedef struct _nvme_command_vs {
+    nvme_command_common_t   common;     ///< common cdw 0
+    u32                     ndt;        ///< number of dwords in data transfer
+    u32                     ndm;        ///< number of dwords in metadata transfer
+    u32                     cdw12_15[4]; ///< vendor specific (cdw 12-15)
+} nvme_command_vs_t;
+
 /// Admin command:  Delete I/O Submission & Completion Queue
 typedef struct _nvme_acmd_delete_ioq {
     nvme_command_common_t   common;     ///< common cdw 0
     u16                     qid;        ///< queue id (cdw 10)
     u16                     rsvd10;     ///< reserved (in cdw 10)
-    u32                     cwd11_15[5]; ///< reserved (cdw 11-15)
+    u32                     cdw11_15[5]; ///< reserved (cdw 11-15)
 } nvme_acmd_delete_ioq_t;
 
 /// Admin command:  Create I/O Submission Queue
@@ -298,7 +306,7 @@ typedef struct _nvme_identify_ctlr {
     u8                      vwc;        ///< volatile write cache
     u16                     awun;       ///< atomic write unit normal
     u16                     awupf;      ///< atomic write unit power fail
-    u8                      nvscc;      ///< NVM vendoe specific config
+    u8                      nvscc;      ///< NVM vendor specific config
     u8                      rsvd531[173]; ///< reserved (531-703)
     u8                      rsvd704[1344]; ///< reserved (704-2047)
     u8                      psd[1024];  ///< power state 0-31 descriptors
@@ -476,6 +484,7 @@ typedef struct _nvme_acmd_set_features {
 /// Submission queue entry
 typedef union _nvme_sq_entry {
     nvme_command_rw_t       rw;         ///< read/write command
+    nvme_command_vs_t       vs;         ///< admin and vendor specific command
 
     nvme_acmd_abort_t       abort;      ///< admin abort command
     nvme_acmd_create_cq_t   create_cq;  ///< admin create IO completion queue
@@ -557,6 +566,10 @@ int nvme_acmd_create_cq(nvme_queue_t* ioq, u64 prp);
 int nvme_acmd_create_sq(nvme_queue_t* ioq, u64 prp);
 int nvme_acmd_delete_cq(nvme_queue_t* ioq);
 int nvme_acmd_delete_sq(nvme_queue_t* ioq);
+
+int nvme_acmd_vs(nvme_device_t* dev, int nsid, u64 prp1, u64 prp2, int opc, u32 ndt, u32 ndm, u32 cdw12_15[4]);
+
+int nvme_cmd_vs(nvme_queue_t* ioq, u16 cid, int nsid, u64 prp1, u64 prp2, int opc, u32 ndt, u32 ndm, u32 cdw12_15[4]);
 
 int nvme_cmd_rw(nvme_queue_t* ioq, int opc, u16 cid, int nsid, u64 slba, int nlb, u64 prp1, u64 prp2);
 int nvme_cmd_read(nvme_queue_t* ioq, u16 cid, int nsid, u64 slba, int nlb, u64 prp1, u64 prp2);

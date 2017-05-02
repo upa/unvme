@@ -42,15 +42,21 @@
  */
 int main(int argc, char* argv[])
 {
-    const char* usage = "Usage: %s PCINAME [NSID]\n";
+    const char* usage = "Usage: %s PCINAME [NSID]";
 
-    if (argc < 2) errx(1, usage, argv[0]);
+    if (argc < 2) {
+        warnx(usage, argv[0]);
+        exit(1);
+    }
 
     int nsid = 1;
     if (argc > 2) {
         char* s = argv[2];
         nsid = strtol(s, &s, 0);
-        if (*s) errx(1, usage, argv[0]);
+        if (*s) {
+            warnx(usage, argv[0]);
+            exit(1);
+        }
     }
 
     nvme_setup(argv[1], 8);

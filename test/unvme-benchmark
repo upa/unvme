@@ -82,6 +82,7 @@ for i in $@; do
 done
 
 mkdir -p ${OUTDIR}
+if [ $? -ne 0 ]; then exit 1; fi
 
 
 #
@@ -126,7 +127,7 @@ for rw in ${RW}; do
 
             cmd ${FIO} ${FIOFILE} 2>&1 | tee -a ${OUTFILE}
 
-            if [ -n "$(grep maxt= ${OUTFILE})" ]; then
+            if [ -n "$(grep 'Run stat' ${OUTFILE})" ]; then
                 echo -e "\n========\n" >> ${OUTFILE}
                 cmd /usr/bin/free -h | tee -a ${OUTFILE}
                 rm ${FIOFILE}

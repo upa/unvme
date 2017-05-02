@@ -75,17 +75,22 @@ void* test_session(void* arg)
     sem_wait(&sm_start);
 
     if (!(ns = unvme_open(ses->pciname))) exit(1);
+    printf("%s qc=%d/%d qs=%d/%d bc=%#lx bs=%d mbio=%d\n",
+            ns->device, ns->qcount, ns->maxqcount, ns->qsize, ns->maxqsize,
+            ns->blockcount, ns->blocksize, ns->maxbpio);
 
     u64 datasize = 256*1024*1024;
     u64 nlb = datasize >> ns->blockshift;
     u64 slba = nlb * ns->id;
     u64* wbuf = unvme_alloc(ns, datasize);
     u64* rbuf = unvme_alloc(ns, datasize);
-    if (!wbuf || !rbuf) errx(1, "unvme_alloc %ld failed", datasize);
+    if (!wbuf || !rbuf) errx(1, "unvme_alloc %#lx failed", datasize);
 
     u64 w, wsize = datasize / sizeof(u64);
-    u64 pat = ses->thread ^ random();
-    for (w = 0; w < wsize; w++) wbuf[w] = pat + w;
+    for (w = 0; w < wsize; w++) {
+        u64 pat = ses->thread + w;
+        wbuf[w] = (pat << 32) | (~pat & 0xffffffff);
+    }
 
     // for multiple namespace instances, different queues must be used
     // so divide up the queues for those instances
@@ -94,8 +99,7 @@ void* test_session(void* arg)
     while (!error && qcount--) {
         u64 lba = slba + q;
         u64 nb = nlb - q;
-        printf("Test %s q%d lba %#lx nlb %#lx pat 0x%08lX\n",
-                ses->pciname, q, lba, nb, pat);
+        printf("Test %s q%d lba %#lx nlb %#lx\n", ses->pciname, q, lba, nb);
         if (unvme_write(ns, q, wbuf, lba, nb)) {
             printf("ERROR: unvme_write %s q%d lba %#lx nlb %#lx\n",
                    ses->pciname, q, lba, nb);
@@ -138,11 +142,14 @@ int main(int argc, char* argv[])
     prog = prog ? prog + 1 : argv[0];
 
     char usage[256];
-    sprintf(usage, "\nUsage: %s PCINAME[/NSID] PCINAME[/NSID]...\n\
-       (requires 2 or more devices specified)\n\n\
- e.g.: %s 0a:00.0/1 0a:00.0/2 0b:00.0\n", prog, prog);
+    sprintf(usage, "Usage: %s PCINAME PCINAME...\n\n\
+       must specified 2 or more devices\n\
+       (e.g.: %s 0a:00.0/1 0a:00.0/2 0b:00.0/1)", prog, prog);
 
-    if (argc < 3) errx(1, usage);
+    if (argc < 3) {
+        warnx(usage);
+        exit(1);
+    }
 
     int numses = argc - 1;
     ses_t* ses = malloc(numses * sizeof(ses_t));
@@ -150,7 +157,10 @@ int main(int argc, char* argv[])
     for (i = 0; i < numses; i++) {
         int b, d, f, n = 1;
         if ((sscanf(argv[i+1], "%x:%x.%x/%x", &b, &d, &f, &n) != 4) &&
-            (sscanf(argv[i+1], "%x:%x.%x", &b, &d, &f) != 3)) errx(1, usage);
+            (sscanf(argv[i+1], "%x:%x.%x", &b, &d, &f) != 3)) {
+            warnx(usage);
+            exit(1);
+        }
         sprintf(ses[i].pciname, "%02x:%02x.%x/%x", b, d, f, n);
         ses[i].pci = (b << 16) | (d << 8) | f;
         ses[i].ins = 0;

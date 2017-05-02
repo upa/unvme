@@ -114,17 +114,22 @@ void print_firmware_slot(void* buf)
 int main(int argc, char* argv[])
 {
     const char* usage = "Usage: %s PCINAME NSID LOG_PAGE_ID\n\
-where\n\
-      log_page_id 1 = error information\n\
-      log_page_id 2 = SMART / Health information\n\
-      log_page_id 3 = firmware slot information\n";
+      (LOG_PAGE_ID 1 = error information)\n\
+      (LOG_PAGE_ID 2 = SMART / Health information)\n\
+      (LOG_PAGE_ID 3 = firmware slot information)";
 
-    if (argc != 4) errx(1, usage, argv[0]);
+    if (argc != 4) {
+        warnx(usage, argv[0]);
+        exit(1);
+    }
 
     char* s = argv[2];
     int nsid = strtol(s, &s, 0);
     int lid = strtol(argv[3], &s, 0);
-    if (*s || (lid < 1 || lid > 3)) errx(1, usage, argv[0]);
+    if (*s || (lid < 1 || lid > 3)) {
+        warnx(usage, argv[0]);
+        exit(1);
+    }
 
     nvme_setup(argv[1], 8);
     vfio_dma_t* dma = vfio_dma_alloc(vfiodev, 8192);

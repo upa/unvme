@@ -28,12 +28,29 @@ typedef struct {
     pthread_mutex_t     mutex;
     const unvme_ns_t*   ns;
     int                 ncpus;
+    u64                 rdtsc_timeout;
 } unvme_context_t;
 
 
 // Static variables
 static unvme_context_t  unvme = { .mutex = PTHREAD_MUTEX_INITIALIZER };
 
+
+/**
+ * Read tsc.
+ */
+static inline uint64_t rdtsc(void)
+{
+    union {
+        uint64_t val;
+        struct {
+            uint32_t lo;
+            uint32_t hi;
+        };
+    } tsc;
+    asm volatile ("rdtsc" : "=a" (tsc.lo), "=d" (tsc.hi));
+    return tsc.val;
+}
 
 /*
  * Clean up UNVMe upon exit.
@@ -45,7 +62,7 @@ static void do_unvme_cleanup(void)
 }
 
 /*
- * Initialize UNVMe.
+ * Initialize UNVMe once.
  */
 static int do_unvme_init(struct thread_data *td)
 {
@@ -59,7 +76,16 @@ static int do_unvme_init(struct thread_data *td)
         sscanf(td->o.filename, "%x.%x.%x.%x", &b, &d, &f, &n);
         sprintf(pciname, "%x:%x.%x/%x", b, d, f, n);
         unvme.ns = unvme_open(pciname);
-        if (!unvme.ns) error(1, 0, "unvme_open %s failed", pciname);
+
+        if (!unvme.ns)
+            error(1, 0, "unvme_open %s failed", pciname);
+        if (td->o.iodepth >= unvme.ns->qsize)
+            error(1, 0, "iodepth %d greater than queue size", td->o.iodepth);
+
+        // set 10 seconds timeout
+        uint64_t tsc = rdtsc();
+        usleep(10000);
+        unvme.rdtsc_timeout = (rdtsc() - tsc) * 1000;
 
         unvme.ncpus = sysconf(_SC_NPROCESSORS_ONLN);
         printf("unvme_open %s q=%dx%d ncpus=%d\n",
@@ -71,19 +97,8 @@ static int do_unvme_init(struct thread_data *td)
     if (td->thread_number > unvme.ns->qcount ||
         td->o.iodepth >= unvme.ns->qsize) {
         error(1, 0, "thread %d iodepth %d exceeds UNVMe queue limit %dx%d",
-             td->thread_number, td->o.iodepth, unvme.ns->qcount, unvme.ns->qsize); 
+              td->thread_number, td->o.iodepth, unvme.ns->qcount, unvme.ns->qsize-1); 
     }
-
-#if 0
-    // bind each thread to a CPU
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    int cpu = td->thread_number % unvme.ncpus;
-    CPU_SET(cpu, &cpuset);
-    if (pthread_setaffinity_np(pthread_self(), sizeof(cpuset), &cpuset))
-        error(1, errno, "pthread_setaffinity_np thread %d to CPU %d",
-                        td->thread_number, cpu);
-#endif
 
     pthread_mutex_unlock(&unvme.mutex);
     return 0;
@@ -165,7 +180,7 @@ static int fio_unvme_close(struct thread_data *td, struct fio_file *f)
  */
 static int fio_unvme_iomem_alloc(struct thread_data *td, size_t len)
 {
-    // in some case, IO mem alloc is called first
+    // FIO bug - found cases where this is called before ->get_file_size()
     if (!unvme.ns) do_unvme_init(td);
 
     if (!td->orig_buffer) td->orig_buffer = unvme_alloc(unvme.ns, len);
@@ -210,39 +225,33 @@ static struct io_u* fio_unvme_event(struct thread_data *td, int event)
 static int fio_unvme_getevents(struct thread_data *td, unsigned int min,
                                unsigned int max, const struct timespec *t)
 {
-    unvme_data_t* udata = td->io_ops_data;
+    int i;
+    struct io_u* io_u;
     int events = 0;
-    struct timespec t0, t1;
-    uint64_t timeout = 0;
+    u64 endtsc = 0;
+    unvme_data_t* udata = td->io_ops_data;
 
-    if (t) {
-        timeout = t->tv_sec * 1000000000L + t->tv_nsec;
-        clock_gettime(CLOCK_MONOTONIC_RAW, &t0);
-    }
-
-    for (;;) {
-        struct io_u* io_u;
-        int i;
-
-        io_u_qiter(&td->io_u_all, io_u, i)
-        {
+    do {
+        io_u_qiter(&td->io_u_all, io_u, i) {
             if (io_u->engine_data) {
-                if (!unvme_apoll(io_u->engine_data, 0)) {
+                int stat = unvme_apoll(io_u->engine_data, 0);
+                if (stat == 0) {
                     io_u->engine_data = NULL;
                     udata->iocq[udata->tail] = io_u;
                     TDEBUG("PUT.%d %p", udata->tail, io_u->buf);
                     if (++udata->tail > td->o.iodepth) udata->tail = 0;
                     if (++events >= min) return events;
-                } else if (t) {
-                    clock_gettime(CLOCK_MONOTONIC_RAW, &t1);
-                    uint64_t elapse = ((t1.tv_sec - t0.tv_sec) * 1000000000L)
-                                      + t1.tv_nsec - t0.tv_nsec;
-                    if (elapse > timeout) return events;
+                } else if (stat == -1) {
+                    if (endtsc == 0) endtsc = rdtsc() + unvme.rdtsc_timeout;
+                } else {
+                    error(1, 0, "\nunvme_apoll return %#x", stat);
                 }
             }
         }
-    }
+        sched_yield();
+    } while (rdtsc() < endtsc);
 
+    error(1, 0, "\nunvme_apoll timeout");
     return 0;
 }
 
@@ -263,7 +272,6 @@ static int fio_unvme_queue(struct thread_data *td, struct io_u *io_u)
      */
     fio_ro_check(td, io_u);
 
-    int err = 0;
     void* buf = io_u->buf;
     u64 slba = io_u->offset >> unvme.ns->blockshift;
     int nlb = io_u->xfer_buflen >> unvme.ns->blockshift;
@@ -272,27 +280,23 @@ static int fio_unvme_queue(struct thread_data *td, struct io_u *io_u)
     switch (io_u->ddir) {
     case DDIR_READ:
         TDEBUG("READ q%d %p %#lx %d", q, buf, slba, nlb);
-        if (!(io_u->engine_data = unvme_aread(unvme.ns, q, buf, slba, nlb)))
-            err = 1;
+        if ((io_u->engine_data = unvme_aread(unvme.ns, q, buf, slba, nlb)))
+            return FIO_Q_QUEUED;
+        error(1, 0, "\nunvme_aread q=%d slba=%#lx nlb=%d", q, slba, nlb);
         break;
 
     case DDIR_WRITE:
         TDEBUG("WRITE q%d %p %#lx %d", q, buf, slba, nlb);
-        if (!(io_u->engine_data = unvme_awrite(unvme.ns, q, buf, slba, nlb)))
-            err = 1;
+        if ((io_u->engine_data = unvme_awrite(unvme.ns, q, buf, slba, nlb)))
+            return FIO_Q_QUEUED;
+        error(1, 0, "\nunvme_awrite q=%d slba=%#lx nlb=%d", q, slba, nlb);
         break;
 
     default:
         break;
     }
 
-    /*
-     * Could return FIO_Q_QUEUED for a queued request,
-     * FIO_Q_COMPLETED for a completed request, and FIO_Q_BUSY
-     * if we could queue no more at this point (you'd have to
-     * define ->commit() to handle that.
-     */
-    return err ? FIO_Q_COMPLETED : FIO_Q_QUEUED;
+    return FIO_Q_COMPLETED;
 }
 
 

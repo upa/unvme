@@ -47,64 +47,92 @@
 
 int main(int argc, char** argv)
 {
-    const char* usage =
-    "Usage: %s [OPTION]... PCINAME\n\
-             -s SIZE    data size (default 100M)\n\
-             PCINAME    PCI device name (as %%x:%%x.%%x[/NSID] format)\n";
+    const char* usage = "Usage: %s [OPTION]... PCINAME\n\
+           -a LBA     use starting LBA (default random)\n\
+           -s SIZE    data size (default 100M)\n\
+           PCINAME    PCI device name (as 01:00.0[/1] format)";
 
     int opt;
     u64 datasize = 100 * 1024 * 1024;
     const char* prog = strrchr(argv[0], '/');
     prog = prog ? prog + 1 : argv[0];
+    char* endp;
+    u64 slba = -1L;
 
-    while ((opt = getopt(argc, argv, "s:")) != -1) {
+    while ((opt = getopt(argc, argv, "s:a:")) != -1) {
         switch (opt) {
+        case 'a':
+            slba = strtoull(optarg, 0, 0);
+            break;
         case 's':
-            datasize = atol(optarg);
-            int l = strlen(optarg) - 1;
-            if (tolower(optarg[l]) == 'k') datasize *= 1024;
-            else if (tolower(optarg[l]) == 'm') datasize *= 1024 * 1024;
-            else if (tolower(optarg[l]) == 'g') datasize *= 1024 * 1024 * 1024;
+            datasize = strtoull(optarg, &endp, 0);
+            if (endp) {
+                int c = tolower(*endp);
+                if (c == 'k') datasize *= 1024;
+                else if (c == 'm') datasize *= 1024 * 1024;
+                else if (c == 'g') datasize *= 1024 * 1024 * 1024;
+            }
             break;
         default:
-            errx(1, usage, prog);
+            warnx(usage, prog);
+            exit(1);
         }
     }
-    if (optind >= argc) errx(1, usage, prog);
+    if ((optind + 1) != argc) {
+        warnx(usage, prog);
+        exit(1);
+    }
     char* pciname = argv[optind];
 
     printf("SIMPLE WRITE-READ-VERIFY TEST BEGIN\n");
     const unvme_ns_t* ns = unvme_open(pciname);
     if (!ns) exit(1);
-    printf("%s qc=%d qs=%d ds=%ld cap=%ld mbio=%d\n",
-            ns->device, ns->qcount, ns->qsize, datasize, ns->blockcount, ns->maxbpio);
+    printf("%s qc=%d/%d qs=%d/%d bc=%#lx bs=%d mbio=%d ds=%#lx\n",
+            ns->device, ns->qcount, ns->maxqcount, ns->qsize, ns->maxqsize,
+            ns->blockcount, ns->blocksize, ns->maxbpio, datasize);
 
     void* buf = unvme_alloc(ns, datasize);
     if (!buf) errx(1, "unvme_alloc %ld failed", datasize);
     time_t tstart = time(0);
-    u64 slba = 0;
     u64 nlb = datasize / ns->blocksize;
+    if (!nlb) nlb = 1;
+
+    if (slba == -1L) {
+        srandom(time(0));
+        slba = (random() % ns->blockcount) - (ns->qcount * nlb);
+        slba &= ~(ns->nbpp - 1);
+    }
+
     u64* p = buf;
     u64 wsize = datasize / sizeof(u64);
-    u64 pat, w;
-    int q;
+    u64 w;
+    int q, stat;
 
     for (q = 0; q < ns->qcount; q++) {
-        struct timespec ts;
-        clock_gettime(CLOCK_REALTIME, &ts);
-        pat = ((ts.tv_sec ^ ts.tv_nsec) << 32) | ts.tv_nsec;
-        printf("Test q=%-2d lba=0x%08lx nlb=%#lx pat=0x%08lX\n", q, slba, nlb, pat);
-        for (w = 0; w < wsize; w++) p[w] = (pat << 32) + w + q;
-        if (unvme_write(ns, q, p, slba, nlb))
-            errx(1, "unvme_write %ld block(s) failed", nlb);
-        memset(p, 0, nlb * ns->blocksize);
-        if (unvme_read(ns, q, p, slba, nlb))
-            errx(1, "unvme_read %ld block(s) failed", nlb);
+        printf("Test q=%-2d lba=%#lx nlb=%#lx\n", q, slba, nlb);
         for (w = 0; w < wsize; w++) {
-            if (p[w] != ((pat << 32) + w + q))
-                errx(1, "mismatch at lba %#lx word %ld", slba, w);
+            u64 pat = (q << 24) + w;
+            p[w] = (pat << 32) | (~pat & 0xffffffff);
+        }
+        stat = unvme_write(ns, q, p, slba, nlb);
+        if (stat)
+            errx(1, "unvme_write failed: slba=%#lx nlb=%#lx stat=%#x", slba, nlb, stat);
+        memset(p, 0, nlb * ns->blocksize);
+        stat = unvme_read(ns, q, p, slba, nlb);
+        if (stat)
+            errx(1, "unvme_read failed: slba=%#lx nlb=%#lx stat=%#x", slba, nlb, stat);
+        for (w = 0; w < wsize; w++) {
+            u64 pat = (q << 24) + w;
+            pat = (pat << 32) | (~pat & 0xffffffff);
+            if (p[w] != pat) {
+                w *= sizeof(w);
+                slba += w / ns->blocksize;
+                w %= ns->blocksize;
+                errx(1, "miscompare at lba %#lx offset %#lx", slba, w);
+            }
         }
         slba += nlb;
+        if (slba >= ns->blockcount) slba = 0;
     }
 
     unvme_free(ns, buf);

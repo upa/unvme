@@ -54,16 +54,18 @@ typedef struct _unvme_iomem {
     unvme_lock_t            lock;       ///< map access lock
 } unvme_iomem_t;
 
-/// IO descriptor
+/// IO full descriptor
 typedef struct _unvme_desc {
+    void*                   buf;        ///< buffer
+    u64                     slba;       ///< starting lba
+    u32                     nlb;        ///< number of blocks
+    u32                     qid;        ///< queue id
+    u32                     opc;        ///< op code
+    u32                     id;         ///< descriptor id
+    void*                   sentinel;   ///< sentinel check
+    struct _unvme_ioq*      ioq;        ///< IO queue context owner
     struct _unvme_desc*     prev;       ///< previous descriptor node
     struct _unvme_desc*     next;       ///< next descriptor node
-    struct _unvme_ioq*      ioq;        ///< IO queue context owner
-    u32                     id;         ///< descriptor id
-    u32                     nlb;        ///< number of blocks
-    u64                     slba;       ///< starting lba
-    void*                   buf;        ///< buffer
-    int                     opc;        ///< op code
     int                     error;      ///< error status
     int                     cidcount;   ///< number of pending cids
     u64                     cidmask[];  ///< cid pending bit mask

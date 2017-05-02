@@ -38,7 +38,7 @@
 
 /**
  * Open a client session with specified number of IO queues and queue size.
- * @param   pciname     PCI device name (as BB:DD.F[/NSID] format)
+ * @param   pciname     PCI device name (as %x:%x.%x[/NSID] format)
  * @param   qcount      number of io queues
  * @param   qsize       io queue size
  * @return  namespace pointer or NULL if error.
@@ -63,7 +63,7 @@ const unvme_ns_t* unvme_openq(const char* pciname, int qcount, int qsize)
 
 /**
  * Open a client session.
- * @param   pciname     PCI device name (as BB:DD.F[/NSID] format)
+ * @param   pciname     PCI device name (as %x:%x.%x[/NSID] format)
  * @return  namespace pointer or NULL if error.
  */
 const unvme_ns_t* unvme_open(const char* pciname)
@@ -114,7 +114,7 @@ int unvme_free(const unvme_ns_t* ns, void* buf)
  */
 unvme_iod_t unvme_aread(const unvme_ns_t* ns, int qid, void* buf, u64 slba, u32 nlb)
 {
-    return unvme_rw(ns, qid, NVME_CMD_READ, buf, slba, nlb);
+    return (unvme_iod_t)unvme_rw(ns, qid, NVME_CMD_READ, buf, slba, nlb);
 }
 
 /**
@@ -129,19 +129,19 @@ unvme_iod_t unvme_aread(const unvme_ns_t* ns, int qid, void* buf, u64 slba, u32 
 unvme_iod_t unvme_awrite(const unvme_ns_t* ns, int qid,
                          const void* buf, u64 slba, u32 nlb)
 {
-    return unvme_rw(ns, qid, NVME_CMD_WRITE, (void*)buf, slba, nlb);
+    return (unvme_iod_t)unvme_rw(ns, qid, NVME_CMD_WRITE, (void*)buf, slba, nlb);
 }
 
 /**
  * Poll for completion status of a previous IO submission.
- * If there's no error, the descriptor will be released.
+ * If there's no error, the descriptor will be freed.
  * @param   iod         IO descriptor
  * @param   timeout     in seconds
- * @return  0 if ok else error status.
+ * @return  0 if ok else error status (-1 for timeout).
  */
 int unvme_apoll(unvme_iod_t iod, int timeout)
 {
-    return unvme_do_poll(iod, timeout);
+    return unvme_do_poll((unvme_desc_t*)iod, timeout);
 }
 
 /**

@@ -10,6 +10,7 @@ mycmd() {
 
 dir=$(dirname $0)
 for d in $*; do
+    mycmd ${dir}/unvme/unvme_info $d
     mycmd ${dir}/unvme/unvme_sim_test $d
     mycmd ${dir}/unvme/unvme_api_test $d
     mycmd ${dir}/unvme/unvme_mts_test $d

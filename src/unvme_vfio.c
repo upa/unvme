@@ -49,7 +49,7 @@
 #include "unvme_log.h"
 
 /// Print fatal error and exit
-#define FATAL(fmt, arg...)  do { ERROR(fmt, ##arg); exit(1); } while (0)
+#define FATAL(fmt, arg...)  do { ERROR(fmt, ##arg); abort(); } while (0)
 
 /// Starting device DMA address
 #define VFIO_IOVA           0x800000000
@@ -71,7 +71,7 @@ const char* vfio_irq_names[] = { "INTX", "MSI", "MSIX", "ERR", "REQ" };
 static void vfio_read(vfio_device_t* dev, void* buf, size_t len, off_t off)
 {
     if (pread(dev->fd, buf, len, off) != len)
-        FATAL("pread(off=%#lx len=%lu)", off, len);
+        FATAL("pread(off=%#lx len=%#lx)", off, len);
 }
 
 /**
@@ -84,7 +84,7 @@ static void vfio_read(vfio_device_t* dev, void* buf, size_t len, off_t off)
 static void vfio_write(vfio_device_t* dev, void* buf, size_t len, off_t off)
 {
     if (pwrite(dev->fd, buf, len, off) != len)
-        FATAL("pwrite(off=%#lx len=%lu)", off, len);
+        FATAL("pwrite(off=%#lx len=%#lx)", off, len);
 }
 
 /**
@@ -183,7 +183,7 @@ int vfio_mem_free(vfio_mem_t* mem)
         if (dev->memlist == mem) dev->memlist = mem->next;
         dev->iovanext = dev->memlist->prev->dma.addr + dev->memlist->prev->dma.size;
     }
-    DEBUG_FN("%x %#lx %ld %#lx", dev->pci, unmap.iova, unmap.size, dev->iovanext);
+    DEBUG_FN("%x %#lx %#lx %#lx", dev->pci, unmap.iova, unmap.size, dev->iovanext);
     pthread_mutex_unlock(&dev->lock);
 
     free(mem);

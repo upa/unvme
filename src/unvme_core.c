@@ -75,6 +75,7 @@
 static const char*      unvme_log = "/dev/shm/unvme.log";   ///< Log filename
 static unvme_session_t* unvme_ses = NULL;                   ///< session list
 static unvme_lock_t     unvme_lock = 0;                     ///< session lock
+static u64              unvme_rdtsec;                   ///< rdtsc per second
 
 
 /**
@@ -142,7 +143,7 @@ static int unvme_complete_io(unvme_ioq_t* ioq, int timeout)
         cid = nvme_check_completion(&ioq->nvmeq, &err);
         if (err) return err;
         if (cid >= 0 || timeout == 0) break;
-        if (endtsc == 0) endtsc = rdtsc() + timeout * rdtsc_second();
+        if (endtsc == 0) endtsc = rdtsc() + timeout * unvme_rdtsec;
         else sched_yield();
     } while (rdtsc() < endtsc);
     if (cid < 0) return cid;
@@ -204,12 +205,11 @@ static int unvme_submit_io(const unvme_ns_t* ns, unvme_desc_t* desc,
         dma = dev->iomem.map[i];
         if (dma->buf <= buf && buf < (dma->buf + dma->size)) break;
     }
+    unvme_unlockr(&dev->iomem.lock);
     if (i == dev->iomem.count) {
         ERROR("invalid I/O buffer address");
-        unvme_unlockr(&dev->iomem.lock);
         return -1;
     }
-    unvme_unlockr(&dev->iomem.lock);
 
     u64 addr = dma->addr + (u64)(buf - dma->buf);
     if ((addr & (ns->blocksize - 1)) != 0) {
@@ -236,12 +236,12 @@ static int unvme_submit_io(const unvme_ns_t* ns, unvme_desc_t* desc,
         int err = unvme_complete_io(ioq, UNVME_TIMEOUT);
         if (err != 0) {
             if (err == -1) {
-                ERROR("q %d timeout", ioq->nvmeq.id);
+                ERROR("q%d timeout", ioq->nvmeq.id);
                 abort();
             }
             while (desc->cidcount) {
                 if (unvme_complete_io(ioq, UNVME_TIMEOUT) == -1) {
-                    ERROR("q %d timeout", ioq->nvmeq.id);
+                    ERROR("q%d timeout", ioq->nvmeq.id);
                     abort();
                 }
             }
@@ -292,10 +292,12 @@ static void unvme_adminq_create(unvme_device_t* dev, int qsize)
     DEBUG_FN("%x qd=%d", dev->vfiodev.pci, qsize);
     dev->asqdma = vfio_dma_alloc(&dev->vfiodev, qsize * sizeof(nvme_sq_entry_t));
     dev->acqdma = vfio_dma_alloc(&dev->vfiodev, qsize * sizeof(nvme_cq_entry_t));
-    if (!dev->asqdma || !dev->acqdma) FATAL("vfio_dma_alloc");
-    nvme_setup_adminq(&dev->nvmedev, qsize,
-                      dev->asqdma->buf, dev->asqdma->addr,
-                      dev->acqdma->buf, dev->acqdma->addr);
+    if (!dev->asqdma || !dev->acqdma)
+        FATAL("vfio_dma_alloc");
+    if (!nvme_setup_adminq(&dev->nvmedev, qsize,
+                           dev->asqdma->buf, dev->asqdma->addr,
+                           dev->acqdma->buf, dev->acqdma->addr))
+        FATAL("nvme_setup_adminq failed");
 }
 
 /**
@@ -320,10 +322,12 @@ static void unvme_ioq_create(unvme_device_t* dev, int q)
     int qsize = dev->ns.qsize;
     ioq->sqdma = vfio_dma_alloc(&dev->vfiodev, qsize * sizeof(nvme_sq_entry_t));
     ioq->cqdma = vfio_dma_alloc(&dev->vfiodev, qsize * sizeof(nvme_sq_entry_t));
-    if (!ioq->sqdma || !ioq->cqdma) FATAL("vfio_dma_alloc");
-    nvme_create_ioq(&dev->nvmedev, &ioq->nvmeq, q + 1, qsize,
-                    ioq->sqdma->buf, ioq->sqdma->addr,
-                    ioq->cqdma->buf, ioq->cqdma->addr);
+    if (!ioq->sqdma || !ioq->cqdma)
+        FATAL("vfio_dma_alloc");
+    if (!nvme_create_ioq(&dev->nvmedev, &ioq->nvmeq, q + 1, qsize,
+                         ioq->sqdma->buf, ioq->sqdma->addr,
+                         ioq->cqdma->buf, ioq->cqdma->addr))
+        FATAL("nvme_create_ioq %d failed", q + 1);
 
     // setup descriptors and pending masks
     ioq->masksize = ((qsize + 63) >> 6) << 3; // ((qsize + 63) / 64) * sizeof(u64);
@@ -336,7 +340,8 @@ static void unvme_ioq_create(unvme_device_t* dev, int q)
 
     // allocate PRP list pages (assume maxppio fits in 1 PRP list page)
     ioq->prplist = vfio_dma_alloc(&dev->vfiodev, qsize << dev->ns.pageshift);
-    if (!ioq->prplist) FATAL("vfio_dma_alloc");
+    if (!ioq->prplist)
+        FATAL("vfio_dma_alloc");
 
     DEBUG_FN("%x q=%d qd=%d db=%#04lx", dev->vfiodev.pci, ioq->nvmeq.id, qsize,
              (u64)ioq->nvmeq.sq_doorbell - (u64)dev->nvmedev.reg);
@@ -349,7 +354,7 @@ static void unvme_ioq_create(unvme_device_t* dev, int q)
  */
 static void unvme_ioq_delete(unvme_device_t* dev, int q)
 {
-    DEBUG_FN("%x q=%d", dev->vfiodev.pci, q + 1);
+    DEBUG_FN("%x %d", dev->vfiodev.pci, q + 1);
     unvme_ioq_t* ioq = &dev->ioqs[q];
 
     // free all descriptors
@@ -393,7 +398,7 @@ static void unvme_ns_init(unvme_ns_t* ns, int nsid)
     vfio_dma_free(dma);
 
     sprintf(ns->device + strlen(ns->device), "/%d", nsid);
-    DEBUG_FN("%s qc=%d qd=%d bs=%d bc=%lu mbio=%d", ns->device, ns->qcount,
+    DEBUG_FN("%s qc=%d qd=%d bs=%d bc=%#lx mbio=%d", ns->device, ns->qcount,
              ns->qsize, ns->blocksize, ns->blockcount, ns->maxbpio);
 }
 
@@ -434,6 +439,7 @@ unvme_ns_t* unvme_do_open(int pci, int nsid, int qcount, int qsize)
             unvme_unlockw(&unvme_lock);
             exit(1);
         }
+        unvme_rdtsec = rdtsc_second();
     }
 
     // checked for existing opened device
@@ -610,6 +616,8 @@ int unvme_do_free(const unvme_ns_t* ns, void* buf)
  */
 int unvme_do_poll(unvme_desc_t* desc, int timeout)
 {
+    if (desc->sentinel != desc->buf)
+        FATAL("bad IO descriptor");
     PDEBUG("# POLL d={%d %d %#lx}", desc->id, desc->cidcount, *desc->cidmask);
     int err = 0;
     while (desc->cidcount) {
@@ -640,6 +648,7 @@ unvme_desc_t* unvme_rw(const unvme_ns_t* ns, int qid, int opc,
     desc->buf = buf;
     desc->slba = slba;
     desc->nlb = nlb;
+    desc->sentinel = buf;
 
     PDEBUG("# %s %#lx %#x @%d +%d", opc == NVME_CMD_READ ? "READ" : "WRITE",
            slba, nlb, desc->id, ioq->desccount);
@@ -649,7 +658,7 @@ unvme_desc_t* unvme_rw(const unvme_ns_t* ns, int qid, int opc,
         int cid = unvme_submit_io(ns, desc, buf, slba, n);
         if (cid < 0) {
             if (unvme_do_poll(desc, UNVME_TIMEOUT) != 0) {
-                ERROR("q %d timeout", ioq->nvmeq.id);
+                ERROR("q%d timeout", ioq->nvmeq.id);
                 abort();
             }
             unvme_desc_put(desc);

@@ -73,6 +73,8 @@ static inline void w64(nvme_device_t* dev, u64* addr, u64 val)
 
 /// @endcond
 
+static u64 nvme_rdtsec;                 ///< rdtsc per second
+
 
 /**
  * Wait for controller enabled/disabled state.
@@ -193,7 +195,7 @@ int nvme_wait_completion(nvme_queue_t* q, int cid, int timeout)
             }
             return stat;
         } else if (endtsc == 0) {
-            endtsc = rdtsc() + timeout * rdtsc_second();
+            endtsc = rdtsc() + timeout * nvme_rdtsec;
         }
     } while (rdtsc() < endtsc);
 
@@ -442,6 +444,58 @@ int nvme_acmd_delete_cq(nvme_queue_t* ioq)
 }
 
 /**
+ * NVMe submit a vendor specific command.
+ * @param   dev         device context
+ * @param   nsid        namespace
+ * @param   prp1        PRP1 address
+ * @param   prp2        PRP2 address
+ * @param   opc         vendor specific op code
+ * @param   ndt         number of dwords data transfer
+ * @param   ndm         number of dwords metadata transfer
+ * @param   cdw12_15    command dwords 12-15
+ * @return  0 if ok else -1.
+ */
+int nvme_acmd_vs(nvme_device_t* dev, int nsid, u64 prp1, u64 prp2,
+                 int opc, u32 ndt, u32 ndm, u32 cdw12_15[4])
+{
+    nvme_queue_t* adminq = &dev->adminq;
+    return nvme_cmd_vs(adminq, adminq->sq_tail, nsid, prp1, prp2,
+                       opc, ndt, ndm, cdw12_15);
+}
+
+/**
+ * NVMe submit a vendor specific command.
+ * @param   ioq         io queue
+ * @param   opc         vendor specific op code
+ * @param   cid         command id
+ * @param   nsid        namespace
+ * @param   prp1        PRP1 address
+ * @param   prp2        PRP2 address
+ * @param   ndt         number of dwords data transfer
+ * @param   ndm         number of dwords metadata transfer
+ * @param   cdw12_15    command dwords 12-15
+ * @return  0 if ok else -1.
+ */
+int nvme_cmd_vs(nvme_queue_t* ioq, u16 cid, int nsid, u64 prp1, u64 prp2,
+                int opc, u32 ndt, u32 ndm, u32 cdw12_15[4])
+{
+    nvme_command_vs_t* cmd = &ioq->sq[ioq->sq_tail].vs;
+
+    memset(cmd, 0, sizeof (*cmd));
+    cmd->common.opc = opc;
+    cmd->common.cid = cid;
+    cmd->common.nsid = nsid;
+    cmd->common.prp1 = prp1;
+    cmd->common.prp2 = prp2;
+    cmd->ndt = ndt;
+    cmd->ndm = ndm;
+    if (cdw12_15) memcpy(cmd->cdw12_15, cdw12_15, 4 * sizeof(u32));
+    DEBUG_FN("q=%d t=%d h=%d cid=%#x nsid=%d opc=%#x ndt=%#x ndm=%#x",
+             ioq->id, ioq->sq_tail, ioq->sq_head, cid, nsid, opc, ndt, ndm);
+    return nvme_submit_cmd(ioq);
+}
+
+/**
  * NVMe submit a read write command.
  * @param   ioq         io queue
  * @param   opc         op code
@@ -454,7 +508,7 @@ int nvme_acmd_delete_cq(nvme_queue_t* ioq)
  * @return  0 if ok else -1.
  */
 int nvme_cmd_rw(nvme_queue_t* ioq, int opc, u16 cid, int nsid,
-                       u64 slba, int nlb, u64 prp1, u64 prp2)
+                u64 slba, int nlb, u64 prp1, u64 prp2)
 {
     nvme_command_rw_t* cmd = &ioq->sq[ioq->sq_tail].rw;
 
@@ -466,7 +520,7 @@ int nvme_cmd_rw(nvme_queue_t* ioq, int opc, u16 cid, int nsid,
     cmd->common.prp2 = prp2;
     cmd->slba = slba;
     cmd->nlb = nlb - 1;
-    DEBUG_FN("q=%d t=%d h=%d cid=%#x nsid=%d lba=%#lx nb=%d (%c)",
+    DEBUG_FN("q=%d t=%d h=%d cid=%#x nsid=%d lba=%#lx nb=%#x (%c)",
              ioq->id, ioq->sq_tail, ioq->sq_head, cid, nsid, slba, nlb,
              opc == NVME_CMD_READ? 'R' : 'W');
     return nvme_submit_cmd(ioq);
@@ -627,6 +681,8 @@ nvme_device_t* nvme_create(nvme_device_t* dev, int mapfd)
     dev->maxqsize = cap.mqes + 1;
     dev->dbstride = 1 << cap.dstrd;     // in u32 size offset
 
+    nvme_rdtsec = rdtsc_second();
+
     DEBUG_FN("cap=%#lx ps=%u-%u to=%u maxqs=%u dbs=%u", cap.val,
              cap.mpsmin, cap.mpsmax, cap.to, dev->maxqsize, dev->dbstride);
 
@@ -646,3 +702,4 @@ void nvme_delete(nvme_device_t* dev)
     }
     if (!dev->ext) free(dev);
 }
+

@@ -49,7 +49,7 @@
 #include "rdtsc.h"
 
 /// macro to print an io related error message
-#define IOERROR(s, p)   errx(1, s " buf=%p lba=%#lx", (p)->buf, (p)->lba)
+#define IOERROR(s, p)   errx(1, "ERROR: " s " lba=%#lx", (p)->lba)
 
 /// page structure
 typedef struct {
@@ -65,6 +65,7 @@ static int qcount = 1;          ///< queue count
 static int qsize = 8;           ///< queue size
 static int runtime = 15;        ///< run time in seconds
 static u64 endtsc = 0;          ///< end run tsc
+static u64 timeout = 0;         ///< tsc elapsed timeout
 static sem_t sm_ready;          ///< semaphore to start thread
 static sem_t sm_start;          ///< semaphore to start test
 static pthread_t* ses;          ///< array of thread sessions
@@ -109,8 +110,9 @@ static void* run_thread(void* arg)
 {
     int rw = (long)arg >> 16;
     int q = (long)arg & 0xffff;
+    int qdepth = qsize - 1;
 
-    u64 lba = (q * qcount * qsize * ns->nbpp) << 1;
+    u64 lba = (q * qcount * qdepth * ns->nbpp) << 1;
     lat_page_t* pages = calloc(ns->maxiopq, sizeof(lat_page_t));
     lat_page_t* p = pages;
     int i;
@@ -125,23 +127,27 @@ static void* run_thread(void* arg)
     sem_post(&sm_ready);
     sem_wait(&sm_start);
 
-    for (i = 0; i < ns->maxiopq; i++) io_submit(q, rw, pages + i);
+    for (i = 0; i < qdepth; i++) io_submit(q, rw, pages + i);
 
     i = 0;
-    int pending = ns->maxiopq;
+    int pending = qdepth;
     do {
         p = pages + i;
-        if (p->iod != 0 && unvme_apoll(p->iod, 0) == 0) {
-            u64 tc = rdtsc_elapse(p->tsc);
-            if (min_clat > tc) min_clat = tc;
-            if (max_clat < tc) max_clat = tc;
-            avg_clat += tc;
+        if (p->iod) {
+            if (unvme_apoll(p->iod, 0) == 0) {
+                u64 tc = rdtsc_elapse(p->tsc);
+                if (min_clat > tc) min_clat = tc;
+                if (max_clat < tc) max_clat = tc;
+                avg_clat += tc;
         
-            if ((tc + p->tsc) < endtsc) {
-                io_submit(q, rw, p);
-            } else {
-                p->iod = 0;
-                pending--;
+                if ((tc + p->tsc) < endtsc) {
+                    io_submit(q, rw, p);
+                } else {
+                    p->iod = 0;
+                    pending--;
+                }
+            } else if ((rdtsc_elapse(p->tsc)) > timeout) {
+                IOERROR("apoll timeout", p);
             }
         }
         if (++i == ns->maxiopq) i = 0;
@@ -187,18 +193,19 @@ void run_test(const char* name, int rw)
     printf("%s: run test for %d seconds (%02d:%02d:%02d)\n",
            name, runtime, t->tm_hour, t->tm_min, t->tm_sec);
     endtsc = rdtsc() + (runtime * tsec);
+    timeout = UNVME_TIMEOUT * tsec;
 
     for (q = 0; q < qcount; q++) sem_post(&sm_start);
     for (q = 0; q < qcount; q++) pthread_join(ses[q], 0);
 
     /*
-    printf("%s: slat=(%lu %lu %lu) lat=(%lu %lu %lu) tscs ioc=%ld\n",
+    printf("%s: slat=(%lu-%lu %lu) lat=(%lu-%lu %lu) tscs ioc=%ld\n",
             name, min_slat, max_slat, avg_slat/ioc,
             min_clat, max_clat, avg_clat/ioc, ioc);
     */
 
     u64 utsc = tsec / 1000000;
-    printf("%s: slat=(%.2f %.2f %.2f) lat=(%.2f %.2f %.2f) usecs ioc=%ld\n",
+    printf("%s: slat=(%.2f-%.2f %.2f) lat=(%.2f-%.2f %.2f) usecs ioc=%ld\n",
             name, (double)min_slat/utsc, (double)max_slat/utsc,
             (double)avg_slat/ioc/utsc, (double)min_clat/utsc,
             (double)max_clat/utsc, (double)avg_clat/ioc/utsc, ioc);
@@ -212,35 +219,52 @@ void run_test(const char* name, int rw)
  */
 int main(int argc, char* argv[])
 {
-    const char* usage =
-"Usage: %s [OPTION]... PCINAME\n\
-         -t SECONDS run time in seconds (default 15)\n\
-         PCINAME    PCI device name (as %%x:%%x.%%x[/NSID] format)\n";
+    const char* usage = "Usage: %s [OPTION]... PCINAME\n\
+           -t SECONDS  run time in seconds (default 15)\n\
+           -q QCOUNT   number of queues/threads (default 2)\n\
+           -d QDEPTH   queue depth (default 8)\n\
+           PCINAME     PCI device name (as 01:00.0[/1] format)";
 
     char* prog = strrchr(argv[0], '/');
     prog = prog ? prog + 1 : argv[0];
 
     int opt;
-    while ((opt = getopt(argc, argv, "t:")) != -1) {
+    while ((opt = getopt(argc, argv, "t:q:d:")) != -1) {
         switch (opt) {
         case 't':
-            runtime = atoi(optarg);
-            if (runtime <= 0) errx(1, "r must be > 0");
+            runtime = strtol(optarg, 0, 0);
+            if (runtime <= 0) errx(1, "runtime must be > 0");
+            break;
+        case 'q':
+            qcount = strtol(optarg, 0, 0);
+            break;
+        case 'd':
+            qsize = strtol(optarg, 0, 0);
             break;
         default:
-            errx(1, usage, prog);
+            warnx(usage, prog);
+            exit(1);
         }
     }
-    if (optind >= argc) errx(1, usage, prog);
+    if ((optind + 1) != argc) {
+        warnx(usage, prog);
+        exit(1);
+    }
     char* pciname = argv[optind];
 
     printf("LATENCY TEST BEGIN\n");
     time_t tstart = time(0);
     if (!(ns = unvme_open(pciname))) exit(1);
-    last_lba = (ns->blockcount - ns->nbpp) & ~(u64)(ns->nbpp - 1);
+    if (qcount <= 0 || qcount > ns->qcount) errx(1, "qcount limit %d", ns->qcount);
+    if (qsize <= 1 || qsize > ns->qsize) errx(1, "qsize limit %d", ns->qsize);
 
-    printf("%s qc=%d qs=%d cap=%ld mbio=%d lastlba=%#lx\n",
-            ns->device, qcount, qsize, ns->blockcount, ns->maxbpio, last_lba);
+    last_lba = (ns->blockcount - ns->nbpp) & ~(u64)(ns->nbpp - 1);
+    if (!qcount) qcount = ns->qcount;
+    if (!qsize) qsize = ns->qsize;
+
+    printf("%s qc=%d/%d qs=%d/%d bc=%#lx bs=%d mbio=%d\n",
+            ns->device, qcount, ns->qcount, qsize, ns->qsize,
+            ns->blockcount, ns->blocksize, ns->maxbpio);
 
     ses = calloc(qcount, sizeof(pthread_t));
 

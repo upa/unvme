@@ -72,7 +72,7 @@ void* test_queue(void* arg)
     u64 slba, wlen, w, *p;
     int nlb, l, i;
 
-    printf("Test s%d q%-2d lba 0x%010lx started\n", ses->id, ses->qid, ses->slba);
+    printf("Test s%d q%-2d lba %#lx started\n", ses->id, ses->qid, ses->slba);
     sem_post(&sm_ready);
     sem_wait(&sm_start);
 
@@ -153,7 +153,7 @@ void* test_queue(void* arg)
     free(buflen);
     free(buf);
     free(iod);
-    printf("Test s%d q%-2d lba 0x%010lx completed\n", ses->id, ses->qid, ses->slba);
+    printf("Test s%d q%-2d lba %#lx completed\n", ses->id, ses->qid, ses->slba);
 
     return 0;
 }
@@ -196,12 +196,11 @@ void* test_session(void* arg)
  */
 int main(int argc, char* argv[])
 {
-    const char* usage =
-"Usage: %s [OPTION]... PCINAME\n\
-         -t THREADS     number of thread sessions (default 4)\n\
-         -q QCOUNT      number of queues per session (default 4)\n\
-         -m MAXNLB      maximum number of blocks per I/O (default 1024)\n\
-         PCINAME        PCI device name (as %%x:%%x.%%x[/NSID] format)\n";
+    const char* usage = "Usage: %s [OPTION]... PCINAME\n\
+           -t THREADS  number of thread sessions (default 4)\n\
+           -q QCOUNT   number of queues per session (default 4)\n\
+           -m MAXNLB   maximum number of blocks per I/O (default 1024)\n\
+           PCINAME     PCI device name (as 01:00.0[/1] format)";
 
     char* prog = strrchr(argv[0], '/');
     prog = prog ? prog + 1 : argv[0];
@@ -210,22 +209,26 @@ int main(int argc, char* argv[])
     while ((opt = getopt(argc, argv, "t:q:m:")) != -1) {
         switch (opt) {
         case 't':
-            numses = atoi(optarg);
+            numses = strtol(optarg, 0, 0);
             if (numses <= 0) errx(1, "t must be > 0");
             break;
         case 'q':
-            qcount = atoi(optarg);
+            qcount = strtol(optarg, 0, 0);
             if (qcount <= 0) errx(1, "t must be > 0");
             break;
         case 'm':
-            maxnlb = atoi(optarg);
+            maxnlb = strtol(optarg, 0, 0);
             if (maxnlb <= 0) errx(1, "m must be > 0");
             break;
         default:
-            errx(1, usage, prog);
+            warnx(usage, prog);
+            exit(1);
         }
     }
-    if (optind >= argc) errx(1, usage, prog);
+    if ((optind + 1) != argc) {
+        warnx(usage, prog);
+        exit(1);
+    }
     char* pciname = argv[optind];
 
     printf("MULTI-SESSION TEST BEGIN\n");
@@ -233,8 +236,10 @@ int main(int argc, char* argv[])
     if ((numses * qcount) > ns->maxqcount)
         errx(1, "%d threads %d queues each exceeds limit of %d queues",
               numses, qcount, ns->maxqcount);
-    printf("%s ses=%d qc=%d qs=%d maxq=%d maxnlb=%d cap=%#lx\n",
-           ns->device, numses, qcount, ns->qsize, ns->maxqcount, maxnlb, ns->blockcount);
+    printf("%s ses=%d qc=%d/%d qs=%d/%d bc=%#lx bs=%d maxnlb=%d/%d\n",
+            ns->device, numses, qcount, ns->qcount, ns->qsize, ns->maxqsize,
+            ns->blockcount, ns->blocksize, maxnlb, ns->maxbpio);
+
     if ((u64)(numses * qcount * ns->qsize * maxnlb) > ns->blockcount)
         errx(1, "not enough disk space");
 

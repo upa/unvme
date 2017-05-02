@@ -53,11 +53,10 @@
  */
 int main(int argc, char** argv)
 {
-    const char* usage =
-    "Usage: %s [OPTION]... PCINAME\n\
-             -v         verbose\n\
-             -r RATIO   max blocks per I/O ratio (default 4)\n\
-             PCINAME    PCI device name (as %%x:%%x.%%x[/NSID] format)\n";
+    const char* usage = "Usage: %s [OPTION]... PCINAME\n\
+           -v         verbose\n\
+           -r RATIO   max blocks per I/O ratio (default 4)\n\
+           PCINAME    PCI device name (as 01:00.0[/1] format)";
 
     int opt, ratio=4, verbose=0;
     const char* prog = strrchr(argv[0], '/');
@@ -66,17 +65,21 @@ int main(int argc, char** argv)
     while ((opt = getopt(argc, argv, "r:v")) != -1) {
         switch (opt) {
         case 'r':
-            ratio = atoi(optarg);
+            ratio = strtol(optarg, 0, 0);
             if (ratio <= 0) errx(1, "r must be > 0");
             break;
         case 'v':
             verbose = 1;
             break;
         default:
-            errx(1, usage, prog);
+            warnx(usage, prog);
+            exit(1);
         }
     }
-    if (optind >= argc) errx(1, usage, prog);
+    if ((optind + 1) != argc) {
+        warnx(usage, prog);
+        exit(1);
+    }
     char* pciname = argv[optind];
 
     printf("API TEST BEGIN\n");
@@ -87,8 +90,9 @@ int main(int argc, char** argv)
     int maxnlb = ratio * ns->maxbpio;
     int iocount = ratio * ns->qsize;
 
-    printf("%s qc=%d qs=%d maxnlb=%d/%d cap=%#lx\n",
-            ns->device, ns->qcount, ns->qsize, maxnlb, ns->maxbpio, ns->blockcount);
+    printf("%s qc=%d/%d qs=%d/%d bc=%#lx bs=%d maxnlb=%d/%d\n",
+            ns->device, ns->qcount, ns->maxqcount, ns->qsize, ns->maxqsize,
+            ns->blockcount, ns->blocksize, maxnlb, ns->maxbpio);
 
     int q, i, nlb;
     u64 slba, size, w, *p;
@@ -105,7 +109,7 @@ int main(int argc, char** argv)
         for (i = 0; i < iocount; i++) {
             nlb = random() % maxnlb + 1;
             size = nlb * ns->blocksize;
-            VERBOSE("  alloc.%-2d  %#8x %ld\n", i, nlb, size);
+            VERBOSE("  alloc.%-2d  %#8x %#lx\n", i, nlb, size);
             if (!(buf[i] = unvme_alloc(ns, size)))
                 errx(1, "alloc.%d failed", i);
         }

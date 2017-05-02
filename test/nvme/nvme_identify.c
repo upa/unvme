@@ -107,12 +107,13 @@ void print_namespace(void* buf, int nsid)
  */
 int main(int argc, char* argv[])
 {
-    const char* usage = "Usage: %s PCINAME [NSID]\n";
-
-    if (argc < 2) errx(1, usage, argv[0]);
+    if (argc < 2) {
+        warnx("Usage: %s PCINAME [NSID]", argv[0]);
+        exit(1);
+    }
     int nsid = 1;
     if (argc > 2) {
-        nsid = atoi(argv[2]);
+        nsid = strtol(argv[2], 0, 0);
         if (nsid < 1) errx(1, "invalid nsid %#x", nsid);
     }
 

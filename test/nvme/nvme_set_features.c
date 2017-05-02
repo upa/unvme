@@ -42,19 +42,31 @@
  */
 int main(int argc, char* argv[])
 {
-    const char* usage = "Usage: %s PCINAME NSID FEATURE_ID FEATURE_ARG\n";
+    const char* usage = "Usage: %s PCINAME NSID FEATURE_ID FEATURE_ARG";
 
-    if (argc < 5) errx(1, usage, argv[0]);
+    if (argc < 5) {
+        warnx(usage, argv[0]);
+        exit(1);
+    }
 
     char* s = argv[2];
     int nsid = strtol(s, &s, 0);
-    if (*s) errx(1, usage, argv[0]);
+    if (*s) {
+        warnx(usage, argv[0]);
+        exit(1);
+    }
     s = argv[3];
     int fid = strtol(s, &s, 0);
-    if (*s) errx(1, usage, argv[0]);
+    if (*s) {
+        warnx(usage, argv[0]);
+        exit(1);
+    }
     s = argv[3];
     u32 res = strtol(s, &s, 0);
-    if (*s) errx(1, usage, argv[0]);
+    if (*s) {
+        warnx(usage, argv[0]);
+        exit(1);
+    }
 
     if (fid < NVME_FEATURE_ARBITRATION || fid > NVME_FEATURE_ASYNC_EVENT ||
         fid == NVME_FEATURE_LBA_RANGE)

@@ -79,8 +79,15 @@ typedef struct _unvme_ns {
     void*               ses;        ///< associated session
 } unvme_ns_t;
 
-/// I/O descriptor
-typedef void*           unvme_iod_t;
+/// I/O descriptor (not to be copied and cleared upon apoll completion)
+typedef struct _unvme_iod {
+    void*               buf;        ///< data buffer (submitted)
+    u64                 slba;       ///< starting lba (submitted)
+    u32                 nlb;        ///< number of blocks (submitted)
+    u32                 qid;        ///< queue id (submitted)
+    u32                 opc;        ///< op code
+    u32                 id;         ///< descriptor id
+} *unvme_iod_t;
 
 // Export functions
 const unvme_ns_t* unvme_open(const char* pciname);
