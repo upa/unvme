@@ -147,7 +147,7 @@ int main(int argc, char* argv[])
        (e.g.: %s 0a:00.0/1 0a:00.0/2 0b:00.0/1)", prog, prog);
 
     if (argc < 3) {
-        warnx(usage);
+        warnx(usage, prog);
         exit(1);
     }
 
@@ -158,7 +158,7 @@ int main(int argc, char* argv[])
         int b, d, f, n = 1;
         if ((sscanf(argv[i+1], "%x:%x.%x/%x", &b, &d, &f, &n) != 4) &&
             (sscanf(argv[i+1], "%x:%x.%x", &b, &d, &f) != 3)) {
-            warnx(usage);
+            warnx(usage, prog);
             exit(1);
         }
         sprintf(ses[i].pciname, "%02x:%02x.%x/%x", b, d, f, n);

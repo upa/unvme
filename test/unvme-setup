@@ -96,6 +96,8 @@ unvme_kill() {
             errx "can't kill unvmed $1"
         fi
     done
+    rm -f /dev/shm/unvme$(echo $1 | tr -d :.)*
+    if [ $? -ne 0 ]; then exit 1; fi
 }
 
 # 
@@ -107,6 +109,7 @@ unvme_unbind() {
 
     if [ -e /sys/bus/pci/devices/$f/driver/unbind ]; then
         echo $f > /sys/bus/pci/devices/$f/driver/unbind
+        if [ $? -ne 0 ]; then exit 1; fi
     fi
 
     n=0
@@ -172,7 +175,7 @@ unvme_reset() {
     unvme_unbind $1
     modprobe -r nvme
     modprobe nvme
-    sleep 1
+    sleep 3 # for NVMe driver to initialize devices
 }
 
 

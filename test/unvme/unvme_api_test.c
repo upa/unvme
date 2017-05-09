@@ -118,7 +118,7 @@ int main(int argc, char** argv)
         srandom(t);
         slba = 0;
         for (i = 0; i < iocount; i++) {
-            int nlb = random() % maxnlb + 1;
+            nlb = random() % maxnlb + 1;
             size = nlb * ns->blocksize / sizeof(u64);
             p = buf[i];
             for (w = 0; w < size; w++) p[w] = (w << 32) + i;

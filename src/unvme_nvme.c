@@ -450,34 +450,29 @@ int nvme_acmd_delete_cq(nvme_queue_t* ioq)
  * @param   prp1        PRP1 address
  * @param   prp2        PRP2 address
  * @param   opc         vendor specific op code
- * @param   ndt         number of dwords data transfer
- * @param   ndm         number of dwords metadata transfer
- * @param   cdw12_15    command dwords 12-15
+ * @param   cdw10_15    command dwords 10-15
  * @return  0 if ok else -1.
  */
 int nvme_acmd_vs(nvme_device_t* dev, int nsid, u64 prp1, u64 prp2,
-                 int opc, u32 ndt, u32 ndm, u32 cdw12_15[4])
+                 int opc, u32 cdw10_15[6])
 {
     nvme_queue_t* adminq = &dev->adminq;
-    return nvme_cmd_vs(adminq, adminq->sq_tail, nsid, prp1, prp2,
-                       opc, ndt, ndm, cdw12_15);
+    return nvme_cmd_vs(adminq, adminq->sq_tail, nsid, prp1, prp2, opc, cdw10_15);
 }
 
 /**
  * NVMe submit a vendor specific command.
  * @param   ioq         io queue
- * @param   opc         vendor specific op code
  * @param   cid         command id
  * @param   nsid        namespace
  * @param   prp1        PRP1 address
  * @param   prp2        PRP2 address
- * @param   ndt         number of dwords data transfer
- * @param   ndm         number of dwords metadata transfer
- * @param   cdw12_15    command dwords 12-15
+ * @param   opc         vendor specific op code
+ * @param   cdw10_15    command dwords 10-15
  * @return  0 if ok else -1.
  */
 int nvme_cmd_vs(nvme_queue_t* ioq, u16 cid, int nsid, u64 prp1, u64 prp2,
-                int opc, u32 ndt, u32 ndm, u32 cdw12_15[4])
+                int opc, u32 cdw10_15[6])
 {
     nvme_command_vs_t* cmd = &ioq->sq[ioq->sq_tail].vs;
 
@@ -487,11 +482,9 @@ int nvme_cmd_vs(nvme_queue_t* ioq, u16 cid, int nsid, u64 prp1, u64 prp2,
     cmd->common.nsid = nsid;
     cmd->common.prp1 = prp1;
     cmd->common.prp2 = prp2;
-    cmd->ndt = ndt;
-    cmd->ndm = ndm;
-    if (cdw12_15) memcpy(cmd->cdw12_15, cdw12_15, 4 * sizeof(u32));
-    DEBUG_FN("q=%d t=%d h=%d cid=%#x nsid=%d opc=%#x ndt=%#x ndm=%#x",
-             ioq->id, ioq->sq_tail, ioq->sq_head, cid, nsid, opc, ndt, ndm);
+    if (cdw10_15) memcpy(cmd->cdw10_15, cdw10_15, sizeof(cmd->cdw10_15));
+    DEBUG_FN("q=%d t=%d h=%d cid=%#x nsid=%d opc=%#x",
+             ioq->id, ioq->sq_tail, ioq->sq_head, cid, nsid, opc);
     return nvme_submit_cmd(ioq);
 }
 

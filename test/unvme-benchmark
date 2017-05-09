@@ -72,6 +72,7 @@ for i in $@; do
         fi
         FILENAME=$(echo $i | tr :/ .)
         DRIVER="unvme"
+        if [ -n "$(pgrep unvmed)" ]; then DRIVER="unvmed"; fi
         ;;
 
     *)
@@ -108,8 +109,8 @@ for rw in ${RW}; do
             FIOFILE=${OUTNAME}.fio
 
             if [ -e ${OUTFILE} ]; then
-                if [ -n "$(grep maxt= ${OUTFILE})" ]; then
-                    echo "Skip existing ${OUTFILE}"
+                if [ -n "$(grep 'Run status' ${OUTFILE})" ]; then
+                    echo -e "Skip existing ${OUTFILE}\n"
                     continue
                 else
                     cmd rm -f ${OUTFILE}
@@ -127,7 +128,7 @@ for rw in ${RW}; do
 
             cmd ${FIO} ${FIOFILE} 2>&1 | tee -a ${OUTFILE}
 
-            if [ -n "$(grep 'Run stat' ${OUTFILE})" ]; then
+            if [ -n "$(grep 'Run status' ${OUTFILE})" ]; then
                 echo -e "\n========\n" >> ${OUTFILE}
                 cmd /usr/bin/free -h | tee -a ${OUTFILE}
                 rm ${FIOFILE}

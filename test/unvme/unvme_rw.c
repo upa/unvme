@@ -79,10 +79,10 @@ unvme_iod_t submit(int q, int d, void* buf, u64 lba, u32 nlb)
             }
         }
         if (dump) {
-            void* pbuf = buf;
+            void* bbuf = buf;
             for (b = 0; b < nlb; b++) {
-                dumpblock(pbuf, lba + b);
-                pbuf += ns->blocksize;
+                dumpblock(bbuf, lba + b);
+                bbuf += ns->blocksize;
                 if (--dump == 0) break;
             }
         }
@@ -251,8 +251,6 @@ int main(int argc, char** argv)
         void* cbuf = iod->buf;
         u64 clba = iod->slba;
         u32 cnlb = iod->nlb;
-        //int cq = iod->qid;
-        //int opc = iod->opc;
 
         // check IO completion
         int stat = unvme_apoll(iod, 0);
@@ -268,7 +266,7 @@ int main(int argc, char** argv)
         }
 
         // IO completion
-        PDEBUG("@C.%c q%d.%d %p %#lx %d", opc == 1 ? 'W' : 'R', q, d, cbuf, clba, cnlb);
+        PDEBUG("@C.%c q%d.%d %p %#lx %d", rw, q, d, cbuf, clba, cnlb);
         completecount -= cnlb;
         iods[x] = NULL;
         tio = time(0);
@@ -281,41 +279,43 @@ int main(int argc, char** argv)
         if (rw == 'r') {
             // print block contents
             if (dump) {
-                void* pbuf = cbuf;
+                void* bbuf = cbuf;
                 for (b = 0; b < cnlb; b++) {
-                    dumpblock(pbuf, clba + b);
-                    pbuf += ns->blocksize;
+                    dumpblock(bbuf, clba + b);
+                    bbuf += ns->blocksize;
                     if (--dump == 0) break;
                 }
             }
 
             // compare read results against data pattern
             if (patinc) {
-                u64* pbuf = cbuf;
-                u64 plba = clba;
+                void* bbuf = cbuf;
+                u64 blba = clba;
                 for (b = 0; b < cnlb; b++) {
-                    u64 p = pattern + ((plba - startlba) * patinc);
+                    u64 p = pattern + ((blba - startlba) * patinc);
+                    u64* pbuf = bbuf;
                     for (i = 0; i < wib; i++) {
                         if (*pbuf != p) {
-                            dumpblock(pbuf, plba);
+                            dumpblock(bbuf, blba);
                             errx(1, "ERROR: data mismatch at LBA %#lx "
-                                    "offset %#lx exp %#lx obs %#lx",
-                                    clba + b, i * sizeof(u64), p, *pbuf);
+                                    "offset %#lx exp %#016lx obs %#016lx",
+                                    blba, i * sizeof(u64), p, *pbuf);
                         }
                         pbuf++;
                     }
-                    plba++;
+                    bbuf += ns->blocksize;
+                    blba++;
                 }
             } else {
-                void* pbuf = cbuf;
+                void* bbuf = cbuf;
                 u64 plba = clba;
                 for (b = 0; b < cnlb; b++) {
-                    if (memcmp(pbuf, fixedbuf, ns->blocksize)) {
-                        dumpblock(pbuf, plba);
-                        errx(1, "ERROR: data mismatch at LBA %#lx exp %#lx",
-                              plba, pattern);
+                    if (memcmp(bbuf, fixedbuf, ns->blocksize)) {
+                        dumpblock(bbuf, plba);
+                        errx(1, "ERROR: data mismatch at LBA %#lx exp %#016lx",
+                                plba, pattern);
                     }
-                    pbuf += ns->blocksize;
+                    bbuf += ns->blocksize;
                     plba++;
                 }
             }

@@ -177,7 +177,9 @@ typedef struct _nvme_controller_reg {
     nvme_adminq_attr_t      aqa;        ///< admin queue attributes
     u64                     asq;        ///< admin submission queue base address
     u64                     acq;        ///< admin completion queue base address
-    u32                     rcss[1010]; ///< reserved and command set specific
+    u32                     cmbloc;     ///< controller memory buffer location
+    u32                     cmbsz;      ///< controller memory buffer size
+    u32                     rcss[1008]; ///< reserved and command set specific
     u32                     sq0tdbl[1024]; ///< sq0 tail doorbell at 0x1000
 } nvme_controller_reg_t;
 
@@ -213,9 +215,14 @@ typedef struct _nvme_command_rw {
 /// Admin and NVM Vendor Specific Command
 typedef struct _nvme_command_vs {
     nvme_command_common_t   common;     ///< common cdw 0
-    u32                     ndt;        ///< number of dwords in data transfer
-    u32                     ndm;        ///< number of dwords in metadata transfer
-    u32                     cdw12_15[4]; ///< vendor specific (cdw 12-15)
+    union {
+        struct {
+            u32             ndt;        ///< number of dwords data transfer
+            u32             ndm;        ///< number of dwords metadata transfer
+            u32             cdw12_15[4]; ///< vendor specific (cdw 12-15)
+        };
+        u32                 cdw10_15[6]; ///< vendor specific (cdw 10-15)
+    };
 } nvme_command_vs_t;
 
 /// Admin command:  Delete I/O Submission & Completion Queue
@@ -567,9 +574,9 @@ int nvme_acmd_create_sq(nvme_queue_t* ioq, u64 prp);
 int nvme_acmd_delete_cq(nvme_queue_t* ioq);
 int nvme_acmd_delete_sq(nvme_queue_t* ioq);
 
-int nvme_acmd_vs(nvme_device_t* dev, int nsid, u64 prp1, u64 prp2, int opc, u32 ndt, u32 ndm, u32 cdw12_15[4]);
+int nvme_acmd_vs(nvme_device_t* dev, int nsid, u64 prp1, u64 prp2, int opc, u32 cdw10_15[6]);
 
-int nvme_cmd_vs(nvme_queue_t* ioq, u16 cid, int nsid, u64 prp1, u64 prp2, int opc, u32 ndt, u32 ndm, u32 cdw12_15[4]);
+int nvme_cmd_vs(nvme_queue_t* ioq, u16 cid, int nsid, u64 prp1, u64 prp2, int opc, u32 cdw10_15[6]);
 
 int nvme_cmd_rw(nvme_queue_t* ioq, int opc, u16 cid, int nsid, u64 slba, int nlb, u64 prp1, u64 prp2);
 int nvme_cmd_read(nvme_queue_t* ioq, u16 cid, int nsid, u64 slba, int nlb, u64 prp1, u64 prp2);
