@@ -44,7 +44,7 @@ install: uninstall all
 	/usr/bin/install -m644 src/unvme{,_log,_nvme,_vfio}.h $(INSTALLDIR)/include
 	/usr/bin/install -m644 src/libunvme.a $(INSTALLDIR)/lib
 	/usr/bin/install -m755 test/unvme-setup $(INSTALLDIR)/bin
-	/usr/bin/install -m755 test/unvme/unvme_{info,rw} $(INSTALLDIR)/bin
+	/usr/bin/install -m755 test/unvme/unvme_{info,wrc} $(INSTALLDIR)/bin
 	/usr/bin/install -m755 test/unvme/unvme_{sim,api,mts,mcd}_test $(INSTALLDIR)/bin
 
 uninstall:

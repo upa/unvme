@@ -5,7 +5,7 @@ src/libunvme.a
 src/unvmed
 test/unvme/*_test
 test/unvme/unvme_info
-test/unvme/unvme_rw
+test/unvme/unvme_wrc
 test/nvme/nvme_identify
 test/nvme/nvme_get_log_page
 test/nvme/nvme_get_features

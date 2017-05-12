@@ -30,6 +30,7 @@ static u32 qdepth = 64;         ///< IO queue depth
 static u32 nbpio = 0;           ///< number of blocks per IO
 static time_t dumptime = 0;     ///< interval to display data
 static int dump = 0;            ///< dump count
+static int mismatch = 0;        ///< data miscompare flag
 static unvme_iod_t* iods;       ///< array IO descriptors
 static void** iobufs;           ///< array of IO buffers
 static u64* fixedbuf;           ///< fixed data block buffer
@@ -179,7 +180,7 @@ int main(int argc, char** argv)
         errx(1, "invalid nbpio %d", nbpio);
     }
 
-    printf("%s qc=%d/%d qd=%d/%d bc=%#lx bs=%d npbio=%d/%d\n",
+    printf("%s qc=%d/%d qd=%d/%d bc=%#lx bs=%d nbpio=%d/%d\n",
             ns->device, qcount, ns->qcount, qdepth, ns->qsize-1,
             ns->blockcount, ns->blocksize, nbpio, ns->maxbpio);
 
@@ -231,15 +232,22 @@ int main(int argc, char** argv)
         int x = q * qdepth + d;
         unvme_iod_t iod = iods[x];
 
-        // check and submit IO
+        // check to submit next IO
         if (!iod) {
             if (submitcount > 0) {
-                int nlb = nbpio;
-                if (nlb > submitcount) nlb = submitcount;
-                iods[x] = submit(q, d, iobufs[x], nextlba, nlb);
-                nextlba += nlb;
-                submitcount -= nlb;
+                if (!mismatch) {
+                    int nlb = nbpio;
+                    if (nlb > submitcount) nlb = submitcount;
+                    iods[x] = submit(q, d, iobufs[x], nextlba, nlb);
+                    nextlba += nlb;
+                    submitcount -= nlb;
+                } else {
+                    completecount -= submitcount;
+                    submitcount = 0;
+                }
             }
+
+            // next slot
             if (++d >= qdepth) {
                 d = 0;
                 if (++q >= qcount) q = 0;
@@ -275,8 +283,8 @@ int main(int argc, char** argv)
             dump++;
         }
 
-        // compare read result data
-        if (rw == 'r') {
+        // compare read result unless (there's already a data mismatch)
+        if (rw == 'r' && !mismatch) {
             // print block contents
             if (dump) {
                 void* bbuf = cbuf;
@@ -297,12 +305,15 @@ int main(int argc, char** argv)
                     for (i = 0; i < wib; i++) {
                         if (*pbuf != p) {
                             dumpblock(bbuf, blba);
-                            errx(1, "ERROR: data mismatch at LBA %#lx "
+                            warnx("ERROR: data mismatch at LBA %#lx "
                                     "offset %#lx exp %#016lx obs %#016lx",
                                     blba, i * sizeof(u64), p, *pbuf);
+                            mismatch++;
+                            break;
                         }
                         pbuf++;
                     }
+                    if (mismatch) break;
                     bbuf += ns->blocksize;
                     blba++;
                 }
@@ -312,8 +323,10 @@ int main(int argc, char** argv)
                 for (b = 0; b < cnlb; b++) {
                     if (memcmp(bbuf, fixedbuf, ns->blocksize)) {
                         dumpblock(bbuf, plba);
-                        errx(1, "ERROR: data mismatch at LBA %#lx exp %#016lx",
+                        warnx("ERROR: data mismatch at LBA %#lx exp %#016lx",
                                 plba, pattern);
+                        mismatch++;
+                        break;
                     }
                     bbuf += ns->blocksize;
                     plba++;
@@ -330,6 +343,6 @@ int main(int argc, char** argv)
 
     printf("Completion time: %ld seconds\n", time(0) - tstart);
 
-    return 0;
+    return mismatch;
 }
 

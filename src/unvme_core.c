@@ -420,6 +420,7 @@ static void unvme_cleanup(unvme_session_t* ses)
     }
     LIST_DEL(unvme_ses, ses);
     free(ses);
+    if (!unvme_ses) log_close();
 }
 
 

@@ -165,7 +165,7 @@ int nvme_check_completion(nvme_queue_t* q, int* stat)
     w32(q->dev, q->cq_doorbell, q->cq_head);
 
     if (*stat == 0) {
-        DEBUG_FN("q=%d cid=%#x (C)", q->id, cqe->cid);
+        DEBUG_FN("q=%d h=%d cid=%#x (C)", q->id, q->sq_head, cqe->cid);
     } else {
         ERROR("q=%d cid=%#x stat=%#x (dnr=%d m=%d sct=%d sc=%#x) (C)",
               q->id, cqe->cid, *stat, cqe->dnr, cqe->m, cqe->sct, cqe->sc);

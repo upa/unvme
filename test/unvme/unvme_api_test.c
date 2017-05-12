@@ -88,7 +88,7 @@ int main(int argc, char** argv)
 
     // set large number of I/O and size
     int maxnlb = ratio * ns->maxbpio;
-    int iocount = ratio * ns->qsize;
+    int iocount = ratio * (ns->qsize - 1);
 
     printf("%s qc=%d/%d qs=%d/%d bc=%#lx bs=%d maxnlb=%d/%d\n",
             ns->device, ns->qcount, ns->maxqcount, ns->qsize, ns->maxqsize,
