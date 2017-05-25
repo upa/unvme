@@ -1,8 +1,8 @@
 #!/bin/bash
 # Script to setup UNVMe driver.
 
-PDIR=$(dirname "$0")
 PROG=$(basename "$0")
+PDIR=$(dirname $(readlink -f $0))
 
 USAGE="Usage:
   ${PROG} list
@@ -47,7 +47,7 @@ errx() {
 #
 vfio_check() {
     modprobe vfio-pci
-    if [ $? -ne 0 ]; then exit 1; fi
+    [ $? -ne 0 ] && exit 1
     if [ -z "$(ls /sys/kernel/iommu_groups)" ]; then
         echo "/sys/kernel/iommu_groups is empty"
         errx "UNVMe requires VFIO, IOMMU, and VT-d enabled"
@@ -89,15 +89,13 @@ unvme_kill() {
 
     n=0
     while true; do
-        if [ -z "$(pgrep -f "unvmed .*$k")" ]; then break; fi
+        [ -z "$(pgrep -f "unvmed .*$k")" ] && break
         usleep 100000
         n=$((n+1))
-        if [ $n -gt 5 ]; then
-            errx "can't kill unvmed $1"
-        fi
+        [ $n -gt 5 ] && errx "can't kill unvmed $1"
     done
     rm -f /dev/shm/unvme$(echo $1 | tr -d :.)*
-    if [ $? -ne 0 ]; then exit 1; fi
+    [ $? -ne 0 ] && exit 1
 }
 
 # 
@@ -109,16 +107,16 @@ unvme_unbind() {
 
     if [ -e /sys/bus/pci/devices/$f/driver/unbind ]; then
         echo $f > /sys/bus/pci/devices/$f/driver/unbind
-        if [ $? -ne 0 ]; then exit 1; fi
+        [ $? -ne 0 ] && exit 1
     fi
 
     n=0
     while true; do
         usleep 100000
-        if [ ! -e /sys/bus/pci/devices/$f/driver ]; then break; fi
+        [ ! -e /sys/bus/pci/devices/$f/driver ] && break
         n=$((n+1))
-        if [ $n -gt 30 ]; then
-            d=$(basename $(readlink /sys/bus/pci/devices/$f/driver))
+        if [ $n -gt 20 ]; then
+            d=$(basename $(readlink -f /sys/bus/pci/devices/$f/driver))
             errx "can't unbind $1 from $d"
         fi
     done
@@ -128,56 +126,54 @@ unvme_unbind() {
 # Function: bind a device to VFIO driver.
 #
 unvme_bind() {
-    unvme_unbind $1
     f=0000:$1
+    if [ ! -e /sys/bus/pci/drivers/vfio-pci/$f ]; then
+        unvme_unbind $1
 
-    if [ -e /sys/bus/pci/drivers/vfio-pci/bind ]; then
-        echo $(lspci -ns $1 | cut -d' ' -f3 | tr : ' ') > /sys/bus/pci/drivers/vfio-pci/new_id
-    fi
-
-    n=0
-    while true; do
-        usleep 100000
-        if [ -e /sys/bus/pci/drivers/vfio-pci/$f ]; then break; fi
-        n=$((n+1))
-        if [ $n -gt 30 ]; then
-            errx "can't bind $1 to vfio-pci"
+        if [ -e /sys/bus/pci/drivers/vfio-pci/bind ]; then
+            echo $(lspci -ns $1 | cut -d' ' -f3 | tr : ' ') > /sys/bus/pci/drivers/vfio-pci/new_id
         fi
-    done
+
+        n=0
+        while true; do
+            usleep 100000
+            [ -e /sys/bus/pci/drivers/vfio-pci/$f ] && break
+            n=$((n+1))
+            [ $n -gt 20 ] && errx "can't bind $1 to vfio-pci"
+        done
+    fi
 }
 
 # 
-# Function: bind device to VFIO and load the UNVMe driver.
+# Function: bind device to VFIO and load the UNVMe daemon.
 #
 unvme_load() {
-    unvme_bind $1
+    # check to load driver if not already
+    pgrep -f "unvmed .*$1"
+    if [ $? -ne 0 ]; then
+        unvme_bind $1
 
-    tmp=$(mktemp)
-    if [[ -f ${PDIR}/unvmed && -x ${PDIR}/unvmed ]]; then
-        ${PDIR}/unvmed $1 &> ${tmp}
-    elif [[ -f ${PDIR}/../src/unvmed && -x ${PDIR}/../src/unvmed ]]; then
-        ${PDIR}/../src/unvmed $1 &> ${tmp}
-    else
-        echo 'ERROR: unvmed not found'
-        exit 1
+        tmp=$(mktemp)
+        if [[ -f ${PDIR}/../src/unvmed && -x ${PDIR}/../src/unvmed ]]; then
+            ${PDIR}/../src/unvmed $1 &> ${tmp}
+        elif [[ -f ${PDIR}/unvmed && -x ${PDIR}/unvmed ]]; then
+            ${PDIR}/unvmed $1 &> ${tmp}
+        else
+            echo 'ERROR: unvmed not found'
+            exit 1
+        fi
+
+        # wait for status
+        while [ ! -s ${tmp} ]; do usleep 100000; done
+
+        if [ -z "$(egrep $1.*loaded ${tmp})" ]; then
+            cat ${tmp}
+            rm ${tmp}
+            exit 1
+        fi
+        rm ${tmp}
     fi
-
-    # wait for status
-    while [ ! -s ${tmp} ]; do usleep 100000; done
-    cat ${tmp}
-    rm ${tmp}
 }
-
-# 
-# Function: reset device to kernel space driver.
-#
-unvme_reset() {
-    unvme_unbind $1
-    modprobe -r nvme
-    modprobe nvme
-    sleep 3 # for NVMe driver to initialize devices
-}
-
 
 #
 # Main starts here.
@@ -187,21 +183,19 @@ unvme_reset() {
 trap 'exit 1' TERM
 export EXIT_PID=$$
 
+[ ${EUID} -ne 0 ] && errx "${PROG} must be run as root"
+
 cmd=$1
 shift
 
 if [ $# -eq 0 ]; then
     NVMELIST=$(lspci -n | grep '0108: ' | cut -d' ' -f1)
-    if [ -z "${NVMELIST}" ]; then
-        errx "No NVMe device found in system"
-    fi
+    [ -z "${NVMELIST}" ] && errx "No NVMe device found in system"
 else
     for d in $*; do
         if [[ $d == *:* ]]; then
             pci=$(lspci -ns $d | grep '0108: ' | cut -d' ' -f1)
-            if [ -z "${pci}" ]; then
-                errx "device $d is not NVMe"
-            fi
+            [ -z "${pci}" ] && errx "device $d is not NVMe"
             NVMELIST="${NVMELIST} ${pci}"
         else
             OPTIONS="${OPTIONS} $d"
@@ -223,8 +217,11 @@ case ${cmd} in
 
     reset)
         for m in ${NVMELIST}; do
-            unvme_reset $m
+            unvme_unbind $m
         done
+        modprobe -r nvme
+        modprobe nvme
+        sleep 3         # wait for NVMe driver to initialize
         ;;
 
     *)

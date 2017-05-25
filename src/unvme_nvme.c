@@ -135,10 +135,14 @@ static int nvme_submit_cmd(nvme_queue_t* q)
     int tail = q->sq_tail;
     HEX_DUMP(&q->sq[tail], sizeof(nvme_sq_entry_t));
     if (++tail == q->size) tail = 0;
+#if 0
+    // Some SSD does not advance sq_head properly (e.g. Intel DC D3600)
+    // so let the upper layer detect queue full error condition
     if (tail == q->sq_head) {
         ERROR("sq full at %d", tail);
         return -1;
     }
+#endif
     q->sq_tail = tail;
     w32(q->dev, q->sq_doorbell, tail);
     return 0;
@@ -156,7 +160,6 @@ int nvme_check_completion(nvme_queue_t* q, int* stat)
     nvme_cq_entry_t* cqe = &q->cq[q->cq_head];
     if (cqe->p == q->cq_phase) return -1;
 
-    q->sq_head = cqe->sqhd;
     *stat = cqe->psf & 0xfe;
     if (++q->cq_head == q->size) {
         q->cq_head = 0;
@@ -164,12 +167,19 @@ int nvme_check_completion(nvme_queue_t* q, int* stat)
     }
     w32(q->dev, q->cq_doorbell, q->cq_head);
 
+#if 0
+    // Some SSD does not advance sq_head properly (e.g. Intel DC D3600)
+    // so let the upper layer detect queue full error condition
+    q->sq_head = cqe->sqhd;
+#endif
+
     if (*stat == 0) {
         DEBUG_FN("q=%d h=%d cid=%#x (C)", q->id, q->sq_head, cqe->cid);
     } else {
         ERROR("q=%d cid=%#x stat=%#x (dnr=%d m=%d sct=%d sc=%#x) (C)",
               q->id, cqe->cid, *stat, cqe->dnr, cqe->m, cqe->sct, cqe->sc);
     }
+
     return cqe->cid;
 }
 

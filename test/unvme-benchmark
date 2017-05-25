@@ -38,10 +38,12 @@ iodepth=IODEPTH"
 : ${BLOCKSIZE=4096}
 : ${IOENGINE=""}
 
-if [ $# -lt 1 ]; then echo ${USAGE}; exit 1; fi
+[ $# -lt 1 ] && echo ${USAGE} && exit 1
+
+[ ${EUID} -ne 0 ] && echo "ERROR: ${PROG} must be run as root" && exit 1
 
 FIO=fio
-if [ -n ${FIODIR} ]; then FIO=${FIODIR}/fio; fi
+[ -n "${FIODIR}" ] && FIO=${FIODIR}/fio
 
 for i in $@; do
     case $i in
@@ -50,9 +52,7 @@ for i in $@; do
             echo "Unknown NVMe device: $i"
             exit 1
         fi
-        if [ -z ${IOENGINE} ]; then
-            IOENGINE=libaio
-        fi
+        [ -z "${IOENGINE}" ] && IOENGINE=libaio
         FILENAME=$i
         DRIVER="nvme"
         ;;
@@ -67,12 +67,10 @@ for i in $@; do
             echo "Device ${pcidev} is not uNVMe enabled"
             exit 1
         fi
-        if [ -z ${IOENGINE} ]; then
-            IOENGINE=../ioengine/unvme_fio
-        fi
+        [ -z "${IOENGINE}" ] && IOENGINE=../ioengine/unvme_fio
         FILENAME=$(echo $i | tr :/ .)
         DRIVER="unvme"
-        if [ -n "$(pgrep unvmed)" ]; then DRIVER="unvmed"; fi
+        [ -n "$(pgrep unvmed)" ] && DRIVER="unvmed"
         ;;
 
     *)
@@ -83,16 +81,16 @@ for i in $@; do
 done
 
 mkdir -p ${OUTDIR}
-if [ $? -ne 0 ]; then exit 1; fi
+[ $? -ne 0 ] && exit 1
 
 
 #
 # Echo and execute a command.
 #
-cmd() {
+excmd() {
     echo "# $* ($(date '+%a %D %r'))"
     eval $*
-    if [ $? -ne 0 ]; then exit 1; fi
+    [ $? -ne 0 ] && exit 1
     echo
     #read -p "Press <Enter> to continue..."
 }
@@ -113,24 +111,24 @@ for rw in ${RW}; do
                     echo -e "Skip existing ${OUTFILE}\n"
                     continue
                 else
-                    cmd rm -f ${OUTFILE}
+                    excmd rm -f ${OUTFILE}
                 fi
             fi
 
             echo "${FIOTEXT}" | sed -e "s?IOENGINE?${IOENGINE}?g;s?RAMPTIME?${RAMPTIME}?g;s?RUNTIME?${RUNTIME}?g;s?BLOCKSIZE?${BLOCKSIZE}?g;s?FILENAME?${FILENAME}?g;s?RW?${rw}?g;s?NUMJOBS?${qc}?g;s?IODEPTH?${qd}?g" > ${FIOFILE}
 
             echo "========"
-            cmd /bin/uname -a | tee -a ${OUTFILE}
-            cmd cat ${FIOFILE} | tee -a ${OUTFILE}
+            excmd /bin/uname -a | tee -a ${OUTFILE}
+            excmd cat ${FIOFILE} | tee -a ${OUTFILE}
             echo -e "\n========\n" >> ${OUTFILE}
-            cmd /usr/bin/free -h | tee -a ${OUTFILE}
+            excmd /usr/bin/free -h | tee -a ${OUTFILE}
             echo -e "\n========\n" >> ${OUTFILE}
 
-            cmd ${FIO} ${FIOFILE} 2>&1 | tee -a ${OUTFILE}
+            excmd ${FIO} ${FIOFILE} 2>&1 | tee -a ${OUTFILE}
 
             if [ -n "$(grep 'Run status' ${OUTFILE})" ]; then
                 echo -e "\n========\n" >> ${OUTFILE}
-                cmd /usr/bin/free -h | tee -a ${OUTFILE}
+                excmd /usr/bin/free -h | tee -a ${OUTFILE}
                 rm ${FIOFILE}
             else
                 echo "### ${PROG} terminated on error ###"

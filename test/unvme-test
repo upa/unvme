@@ -1,22 +1,41 @@
 #!/bin/sh
 
-[ $# -lt 1 ] && echo "Usage: $0 PCINAME..." && exit 1
+PROG=$(basename "$0")
+PDIR=$(dirname $(readlink -f $0))
 
-mycmd() {
-    echo -e "\n\$ $* ($(date))"
-    eval $*
-    if [ $? -ne 0 ]; then exit 1; fi
+[ $# -lt 1 ] && echo "Usage: ${PROG} PCINAME..." && exit 1
+
+[ ${EUID} -ne 0 ] && echo "${PROG} must be run as root" && exit 1
+
+# select the executable path
+setpx() {
+    if [ -x "${PDIR}/$1" ]; then
+        echo "${PDIR}/$1"
+    else
+        echo "/usr/local/bin/$(basename $1)"
+    fi
 }
 
-dir=$(dirname $0)
+# echo and execute command
+excmd() {
+    CMD=$(setpx $1)
+    shift
+    echo -e "\n\$ ${CMD} $* ($(date))"
+    eval ${CMD} $*
+    [ $? -ne 0 ] && exit 1
+}
+
+[ ${EUID} -ne 0 ] && echo "${PROG} must be run as root" && exit 1
+
 for d in $*; do
-    mycmd ${dir}/unvme/unvme_info $d
-    mycmd ${dir}/unvme/unvme_sim_test $d
-    mycmd ${dir}/unvme/unvme_api_test $d
-    mycmd ${dir}/unvme/unvme_mts_test $d
-    mycmd ${dir}/unvme/unvme_lat_test $d
+    excmd unvme-setup bind $d
+    excmd unvme/unvme_info $d
+    excmd unvme/unvme_sim_test $d
+    excmd unvme/unvme_api_test $d
+    excmd unvme/unvme_mts_test $d
+    excmd unvme/unvme_lat_test $d
 done
 
 if [ $# -gt 1 ]; then
-    mycmd ${dir}/unvme/unvme_mcd_test $*
+    excmd unvme/unvme_mcd_test $*
 fi
