@@ -141,7 +141,20 @@ unvme_iod_t unvme_awrite(const unvme_ns_t* ns, int qid,
  */
 int unvme_apoll(unvme_iod_t iod, int timeout)
 {
-    return unvme_do_poll((unvme_desc_t*)iod, timeout);
+    return unvme_do_poll((unvme_desc_t*)iod, timeout, NULL);
+}
+
+/**
+ * Poll for completion status of a previous IO submission.
+ * If there's no error, the descriptor will be freed.
+ * @param   iod         IO descriptor
+ * @param   timeout     in seconds
+ * @param   cqe_cs      CQE command specific DW0 returned
+ * @return  0 if ok else error status (-1 for timeout).
+ */
+int unvme_apoll_cs(unvme_iod_t iod, int timeout, u32* cqe_cs)
+{
+    return unvme_do_poll((unvme_desc_t*)iod, timeout, cqe_cs);
 }
 
 /**
@@ -158,7 +171,7 @@ int unvme_read(const unvme_ns_t* ns, int qid, void* buf, u64 slba, u32 nlb)
     unvme_desc_t* desc = unvme_rw(ns, qid, NVME_CMD_READ, buf, slba, nlb);
     if (desc) {
         sched_yield();
-        return unvme_do_poll(desc, UNVME_TIMEOUT);
+        return unvme_do_poll(desc, UNVME_TIMEOUT, NULL);
     }
     return -1;
 }
@@ -178,7 +191,7 @@ int unvme_write(const unvme_ns_t* ns, int qid,
     unvme_desc_t* desc = unvme_rw(ns, qid, NVME_CMD_WRITE, (void*)buf, slba, nlb);
     if (desc) {
         sched_yield();
-        return unvme_do_poll(desc, UNVME_TIMEOUT);
+        return unvme_do_poll(desc, UNVME_TIMEOUT, NULL);
     }
     return -1;
 }

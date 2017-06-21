@@ -31,7 +31,7 @@
 
 /**
  * @file
- * @brief uNVMe driver module.
+ * @brief UNVMe driver module.
  */
 
 #include <sys/mman.h>
@@ -132,16 +132,16 @@ static void unvme_desc_put(unvme_desc_t* desc)
  * Process an I/O completion.
  * @param   ioq         io queue context
  * @param   timeout     timeout in seconds
+ * @param   cqe_cs      CQE command specific DW0 returned
  * @return  0 if ok else NVMe error code (-1 means timeout).
  */
-static int unvme_complete_io(unvme_ioq_t* ioq, int timeout)
+static int unvme_complete_io(unvme_ioq_t* ioq, int timeout, u32* cqe_cs)
 {
     // wait for completion
     int err, cid;
     u64 endtsc = 0;
     do {
-        cid = nvme_check_completion(&ioq->nvmeq, &err);
-        if (err) return err;
+        cid = nvme_check_completion(&ioq->nvmeq, &err, cqe_cs);
         if (cid >= 0 || timeout == 0) break;
         if (endtsc == 0) endtsc = rdtsc() + timeout * unvme_rdtsec;
         else sched_yield();
@@ -233,14 +233,14 @@ static int unvme_submit_io(const unvme_ns_t* ns, unvme_desc_t* desc,
     } else {
         // if process completion error, clear the current pending descriptor
         unvme_desc_t* desc = ioq->descnext;
-        int err = unvme_complete_io(ioq, UNVME_TIMEOUT);
+        int err = unvme_complete_io(ioq, UNVME_TIMEOUT, NULL);
         if (err != 0) {
             if (err == -1) {
                 ERROR("q%d timeout", ioq->nvmeq.id);
                 abort();
             }
             while (desc->cidcount) {
-                if (unvme_complete_io(ioq, UNVME_TIMEOUT) == -1) {
+                if (unvme_complete_io(ioq, UNVME_TIMEOUT, NULL) == -1) {
                     ERROR("q%d timeout", ioq->nvmeq.id);
                     abort();
                 }
@@ -250,7 +250,7 @@ static int unvme_submit_io(const unvme_ns_t* ns, unvme_desc_t* desc,
     }
 
     // compose PRPs based on cid
-    int numpages = (nlb + ns->nbpp - 1) >> (ns->pageshift - ns->blockshift);
+    int numpages = (nlb + ns->nbpp - 1) >> ns->bpshift;
     u64 prp1 = addr;
     u64 prp2 = 0;
     if (numpages == 2) {
@@ -393,8 +393,10 @@ static void unvme_ns_init(unvme_ns_t* ns, int nsid)
     ns->blockcount = idns->ncap;
     ns->blockshift = idns->lbaf[idns->flbas & 0xF].lbads;
     ns->blocksize = 1 << ns->blockshift;
-    ns->nbpp = 1 << (ns->pageshift - ns->blockshift);
-    ns->maxbpio = ns->maxppio * ns->nbpp;
+    ns->bpshift = ns->pageshift - ns->blockshift;
+    ns->nbpp = 1 << ns->bpshift;
+    ns->pagecount = ns->blockcount >> ns->bpshift;
+    ns->maxbpio = ns->maxppio << ns->bpshift;
     vfio_dma_free(dma);
 
     sprintf(ns->device + strlen(ns->device), "/%d", nsid);
@@ -425,7 +427,7 @@ static void unvme_cleanup(unvme_session_t* ses)
 
 
 /**
- * Open and attach to a uNVMe driver.
+ * Open and attach to a UNVMe driver.
  * @param   pci         PCI device id
  * @param   nsid        namespace id
  * @param   qcount      number of queues (0 for max number of queues support)
@@ -443,12 +445,12 @@ unvme_ns_t* unvme_do_open(int pci, int nsid, int qcount, int qsize)
         unvme_rdtsec = rdtsc_second();
     }
 
-    // checked for existing opened device
+    // check for existing opened device
     unvme_session_t* xses = unvme_ses;
     while (xses) {
         if (xses->ns.pci == pci) {
-            if (nsid > xses->dev->nscount) {
-                ERROR("invalid %06x nsid %d (max %d)", pci, nsid, xses->dev->nscount);
+            if (nsid > xses->ns.nscount) {
+                ERROR("invalid %06x nsid %d (max %d)", pci, nsid, xses->ns.nscount);
                 return NULL;
             }
             if (xses->ns.id == nsid) {
@@ -476,15 +478,15 @@ unvme_ns_t* unvme_do_open(int pci, int nsid, int qcount, int qsize)
         if (nvme_acmd_identify(&dev->nvmedev, 0, dma->addr, 0))
             FATAL("nvme_acmd_identify controller failed");
         nvme_identify_ctlr_t* idc = (nvme_identify_ctlr_t*)dma->buf;
-        dev->nscount = idc->nn;
-        if (nsid > dev->nscount) {
-            ERROR("invalid %06x nsid %d (max %d)", pci, nsid, dev->nscount);
+        if (nsid > idc->nn) {
+            ERROR("invalid %06x nsid %d (max %d)", pci, nsid, idc->nn);
             return NULL;
         }
 
         unvme_ns_t* ns = &dev->ns;
         ns->pci = pci;
         ns->id = 0;
+        ns->nscount = idc->nn;
         sprintf(ns->device, "%02x:%02x.%x", pci >> 16, (pci >> 8) & 0xff, pci & 0xff);
         ns->maxqsize = dev->nvmedev.maxqsize;
         ns->pageshift = dev->nvmedev.pageshift;
@@ -538,15 +540,15 @@ unvme_ns_t* unvme_do_open(int pci, int nsid, int qcount, int qsize)
 }
 
 /**
- * Close and detach from a uNVMe driver.
+ * Close and detach from a UNVMe driver.
  * @param   ns          namespace handle
  * @return  0 if ok else -1.
  */
 int unvme_do_close(const unvme_ns_t* ns)
 {
     DEBUG_FN("%s", ns->device);
-    unvme_session_t* ses = (unvme_session_t*)ns->ses;
-    if (ses->ns.pci != ses->dev->vfiodev.pci) return -1;
+    unvme_session_t* ses = ns->ses;
+    if (ns->pci != ses->dev->vfiodev.pci) return -1;
     unvme_lockw(&unvme_lock);
     unvme_cleanup(ses);
     unvme_unlockw(&unvme_lock);
@@ -613,16 +615,17 @@ int unvme_do_free(const unvme_ns_t* ns, void* buf)
  * If there's no error, the descriptor will be released.
  * @param   desc        IO descriptor
  * @param   timeout     in seconds
+ * @param   cqe_cs      CQE command specific DW0 returned
  * @return  0 if ok else error status.
  */
-int unvme_do_poll(unvme_desc_t* desc, int timeout)
+int unvme_do_poll(unvme_desc_t* desc, int timeout, u32* cqe_cs)
 {
     if (desc->sentinel != desc->buf)
         FATAL("bad IO descriptor");
     PDEBUG("# POLL d={%d %d %#lx}", desc->id, desc->cidcount, *desc->cidmask);
     int err = 0;
     while (desc->cidcount) {
-        if ((err = unvme_complete_io(desc->ioq, timeout)) != 0) break;
+        if ((err = unvme_complete_io(desc->ioq, timeout, cqe_cs)) != 0) break;
     }
     if (desc->id != 0 && desc->cidcount == 0) unvme_desc_put(desc);
     PDEBUG("# q%d +%d", desc->ioq->nvmeq.id, desc->ioq->desccount);
@@ -647,6 +650,7 @@ unvme_desc_t* unvme_rw(const unvme_ns_t* ns, int qid, int opc,
     unvme_desc_t* desc = unvme_desc_get(ioq);
     desc->opc = opc;
     desc->buf = buf;
+    desc->qid = qid;
     desc->slba = slba;
     desc->nlb = nlb;
     desc->sentinel = buf;
@@ -658,7 +662,7 @@ unvme_desc_t* unvme_rw(const unvme_ns_t* ns, int qid, int opc,
         if (n > nlb) n = nlb;
         int cid = unvme_submit_io(ns, desc, buf, slba, n);
         if (cid < 0) {
-            if (unvme_do_poll(desc, UNVME_TIMEOUT) != 0) {
+            if (unvme_do_poll(desc, UNVME_TIMEOUT, NULL) != 0) {
                 ERROR("q%d timeout", ioq->nvmeq.id);
                 abort();
             }

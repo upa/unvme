@@ -126,7 +126,9 @@ unvme_unbind() {
 # Function: bind a device to VFIO driver.
 #
 unvme_bind() {
+    unvme_kill $1
     f=0000:$1
+
     if [ ! -e /sys/bus/pci/drivers/vfio-pci/$f ]; then
         unvme_unbind $1
 

@@ -152,9 +152,10 @@ static int nvme_submit_cmd(nvme_queue_t* q)
  * Check a completion queue and return the completed command id and status.
  * @param   q           queue
  * @param   stat        completion status returned
+ * @param   cqe_cs      CQE command specific DW0 returned
  * @return  the completed command id or -1 if there's no completion.
  */
-int nvme_check_completion(nvme_queue_t* q, int* stat)
+int nvme_check_completion(nvme_queue_t* q, int* stat, u32* cqe_cs)
 {
     *stat = 0;
     nvme_cq_entry_t* cqe = &q->cq[q->cq_head];
@@ -165,6 +166,7 @@ int nvme_check_completion(nvme_queue_t* q, int* stat)
         q->cq_head = 0;
         q->cq_phase = !q->cq_phase;
     }
+    if (cqe_cs) *cqe_cs = cqe->cs;
     w32(q->dev, q->cq_doorbell, q->cq_head);
 
 #if 0
@@ -196,7 +198,7 @@ int nvme_wait_completion(nvme_queue_t* q, int cid, int timeout)
 
     do {
         int stat;
-        int ret = nvme_check_completion(q, &stat);
+        int ret = nvme_check_completion(q, &stat, NULL);
         if (ret >= 0) {
             if (ret == cid && stat == 0) return 0;
             if (ret != cid) {

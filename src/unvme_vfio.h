@@ -51,7 +51,7 @@ typedef struct _vfio_dma {
 
 /// VFIO memory allocation entry
 typedef struct _vfio_mem {
-    struct _vfio_device*    dev;        ///< device ownder
+    struct _vfio_device*    dev;        ///< device owner
     int                     mmap;       ///< mmap indication flag
     vfio_dma_t              dma;        ///< dma mapped memory
     size_t                  size;       ///< size

@@ -274,7 +274,7 @@ int main(int argc, char** argv)
         }
 
         // IO completion
-        PDEBUG("@C.%c q%d.%d %p %#lx %d", rw, q, d, cbuf, clba, cnlb);
+        PDEBUG("@C q%d.%d %p %#lx %d", q, d, cbuf, clba, cnlb);
         completecount -= cnlb;
         iods[x] = NULL;
         tio = time(0);
@@ -341,7 +341,7 @@ int main(int argc, char** argv)
     free(iods);
     unvme_close(ns);
 
-    printf("Completion time: %ld seconds\n", time(0) - tstart);
+    if (!mismatch) printf("Completion time: %ld seconds\n", time(0) - tstart);
 
     return mismatch;
 }

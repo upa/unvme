@@ -45,6 +45,8 @@
 #include "unvme_lock.h"
 #include "unvme.h"
 
+/// Page size
+typedef char unvme_page_t[4096];
 
 /// IO memory allocation tracking info
 typedef struct _unvme_iomem {
@@ -95,24 +97,23 @@ typedef struct _unvme_device {
     vfio_dma_t*             acqdma;     ///< admin completion queue mem
     unvme_iomem_t           iomem;      ///< IO memory tracker
     unvme_ns_t              ns;         ///< controller namespace (id=0)
-    int                     nscount;    ///< number of namespaces available
     int                     refcount;   ///< reference count
     unvme_ioq_t*            ioqs;       ///< pointer to IO queues
 } unvme_device_t;
 
 /// Session context
 typedef struct _unvme_session {
-    struct _unvme_session*  prev;       ///< previous device ndoe
-    struct _unvme_session*  next;       ///< next device ndoe
+    struct _unvme_session*  prev;       ///< previous session node
+    struct _unvme_session*  next;       ///< next session node
     unvme_device_t*         dev;        ///< device context
-    unvme_ns_t              ns;         ///< instance namespace
+    unvme_ns_t              ns;         ///< namespace
 } unvme_session_t;
 
 unvme_ns_t* unvme_do_open(int pci, int nsid, int qcount, int qsize);
 int unvme_do_close(const unvme_ns_t* ns);
 void* unvme_do_alloc(const unvme_ns_t* ns, u64 size);
 int unvme_do_free(const unvme_ns_t* ses, void* buf);
-int unvme_do_poll(unvme_desc_t* desc, int sec);
+int unvme_do_poll(unvme_desc_t* desc, int sec, u32* cqe_cs);
 unvme_desc_t* unvme_rw(const unvme_ns_t* ns, int qid, int opc, void* buf, u64 slba, u32 nlb);
 
 #endif  // _UNVME_CORE_H

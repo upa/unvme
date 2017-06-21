@@ -63,19 +63,22 @@ typedef struct _unvme_ns {
     char                mn[40];     ///< model number
     char                sn[20];     ///< serial number
     char                fr[8];      ///< firmware revision
-    u16                 maxqcount;  ///< max number of queues supported
-    u16                 maxqsize;   ///< max queue size supported
-    u16                 qcount;     ///< number of I/O queues
-    u16                 qsize;      ///< I/O queue size
-    u64                 blockcount; ///< total number of logical blocks
-    u16                 pagesize;   ///< page size
+    u64                 blockcount; ///< total number of available blocks
+    u64                 pagecount;  ///< total number of available pages
     u16                 blocksize;  ///< logical block size
-    u16                 pageshift;  ///< page size shift value
+    u16                 pagesize;   ///< page size
     u16                 blockshift; ///< block size shift value
+    u16                 pageshift;  ///< page size shift value
+    u16                 bpshift;    ///< block to page shift
     u16                 nbpp;       ///< number of blocks per page
-    u16                 maxppio;    ///< max number of pages per I/O
     u16                 maxbpio;    ///< max number of blocks per I/O
+    u16                 maxppio;    ///< max number of pages per I/O
     u16                 maxiopq;    ///< max number of I/O submissions per queue
+    u16                 qcount;     ///< number of I/O queues
+    u16                 maxqcount;  ///< max number of queues supported
+    u16                 qsize;      ///< I/O queue size
+    u16                 maxqsize;   ///< max queue size supported
+    u16                 nscount;    ///< number of namespaces available
     void*               ses;        ///< associated session
 } unvme_ns_t;
 
@@ -103,6 +106,7 @@ int unvme_read(const unvme_ns_t* ns, int qid, void* buf, u64 slba, u32 nlb);
 unvme_iod_t unvme_awrite(const unvme_ns_t* ns, int qid, const void* buf, u64 slba, u32 nlb);
 unvme_iod_t unvme_aread(const unvme_ns_t* ns, int qid, void* buf, u64 slba, u32 nlb);
 int unvme_apoll(unvme_iod_t iod, int timeout);
+int unvme_apoll_cs(unvme_iod_t iod, int timeout, u32* cqe_cs);
 
 #endif // _UNVME_H
 

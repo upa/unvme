@@ -82,10 +82,9 @@ static int do_unvme_init(struct thread_data *td)
         if (td->o.iodepth >= unvme.ns->qsize)
             error(1, 0, "iodepth %d greater than queue size", td->o.iodepth);
 
-        // set 10 seconds timeout
         uint64_t tsc = rdtsc();
         usleep(10000);
-        unvme.rdtsc_timeout = (rdtsc() - tsc) * 1000;
+        unvme.rdtsc_timeout = (rdtsc() - tsc) * 100 * UNVME_TIMEOUT;
 
         unvme.ncpus = sysconf(_SC_NPROCESSORS_ONLN);
         printf("unvme_open %s q=%dx%d ncpus=%d\n",
@@ -184,7 +183,7 @@ static int fio_unvme_iomem_alloc(struct thread_data *td, size_t len)
     if (!unvme.ns) do_unvme_init(td);
 
     if (!td->orig_buffer) td->orig_buffer = unvme_alloc(unvme.ns, len);
-    TDEBUG("%p %ld", td->orig_buffer, len);
+    TDEBUG("%p %#lx", td->orig_buffer, len);
     return td->orig_buffer == NULL;
 }
 

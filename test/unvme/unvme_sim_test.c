@@ -101,6 +101,7 @@ int main(int argc, char** argv)
         srandom(time(0));
         slba = (random() % ns->blockcount) - (ns->qcount * nlb);
         slba &= ~(ns->nbpp - 1);
+        if (slba >= ns->blockcount) slba = 0;
     }
 
     u64* p = buf;
@@ -141,3 +142,4 @@ int main(int argc, char** argv)
     printf("SIMPLE WRITE-READ-VERIFY TEST COMPLETE (%ld secs)\n", time(0) - tstart);
     return 0;
 }
+

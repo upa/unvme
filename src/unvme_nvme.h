@@ -582,7 +582,7 @@ int nvme_cmd_rw(nvme_queue_t* ioq, int opc, u16 cid, int nsid, u64 slba, int nlb
 int nvme_cmd_read(nvme_queue_t* ioq, u16 cid, int nsid, u64 slba, int nlb, u64 prp1, u64 prp2);
 int nvme_cmd_write(nvme_queue_t* ioq, u16 cid, int nsid, u64 slba, int nlb, u64 prp1, u64 prp2);
 
-int nvme_check_completion(nvme_queue_t* q, int* stat);
+int nvme_check_completion(nvme_queue_t* q, int* stat, u32* cqe_cs);
 int nvme_wait_completion(nvme_queue_t* q, int cid, int timeout);
 
 #endif  // _UNVME_NVME_H

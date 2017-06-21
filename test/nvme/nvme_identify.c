@@ -72,7 +72,7 @@ void print_controller(void* buf)
     printf("vwc      : %#x\n", ctlr->vwc);
     printf("awun     : %#x\n", ctlr->awun);
     printf("awupf    : %#x\n", ctlr->awupf);
-    printf("nvscc    : %#x\n\n", ctlr->nvscc);
+    printf("nvscc    : %#x\n", ctlr->nvscc);
 }
 
 /**
@@ -82,7 +82,7 @@ void print_namespace(void* buf, int nsid)
 {
     nvme_identify_ns_t* ns = buf;
 
-    printf("Identify Namespace %#x\n", nsid);
+    printf("\nIdentify Namespace %#x\n", nsid);
     printf("======================\n");
     printf("nsze     : %#lx\n", ns->nsze);
     printf("ncap     : %#lx\n", ns->ncap);
@@ -111,28 +111,41 @@ int main(int argc, char* argv[])
         warnx("Usage: %s PCINAME [NSID]", argv[0]);
         exit(1);
     }
-    int nsid = 1;
+    int nsid = 0;
     if (argc > 2) {
         nsid = strtol(argv[2], 0, 0);
         if (nsid < 1) errx(1, "invalid nsid %#x", nsid);
     }
 
     nvme_setup(argv[1], 8);
-    vfio_dma_t* dma = vfio_dma_alloc(vfiodev, 8192);
+    vfio_dma_t* dma = vfio_dma_alloc(vfiodev, 16384);
     if (!dma) errx(1, "vfio_dma_alloc");
 
     if (nvme_acmd_identify(nvmedev, 0, dma->addr, dma->addr + 4096))
         errx(1, "nvme_acmd_identify 0");
-    print_controller(dma->buf);
-
     nvme_identify_ctlr_t* ctlr = dma->buf;
-    if (nsid > ctlr->nn)
-        errx(1, "invalid nsid %d", nsid);
-    if (nvme_acmd_identify(nvmedev, nsid, dma->addr, dma->addr + 4096))
-        errx(1, "nvme_acmd_identify %d", nsid);
-    print_namespace(dma->buf, nsid);
+    print_controller(ctlr);
 
+    u64 nsaddr = dma->addr + 8192;
+    void* nsbuf = dma->buf + 8192;
+
+    if (nsid) {
+        if (nsid > ctlr->nn)
+            errx(1, "invalid nsid %d", nsid);
+        if (nvme_acmd_identify(nvmedev, nsid, nsaddr, nsaddr + 4096))
+            errx(1, "nvme_acmd_identify %d", nsid);
+        print_namespace(nsbuf + 8192, nsid);
+    } else {
+        for (nsid = 1; nsid <= ctlr->nn; nsid++) {
+            if (nvme_acmd_identify(nvmedev, nsid, nsaddr, nsaddr + 4096))
+                errx(1, "nvme_acmd_identify %d", nsid);
+            print_namespace(nsbuf + 8192, nsid);
+        }
+    }
+
+    vfio_dma_free(dma);
     nvme_cleanup();
+
     return 0;
 }
 
