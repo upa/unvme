@@ -45,6 +45,31 @@
 #include "unvme_lock.h"
 #include "unvme.h"
 
+/// Doubly linked list add node
+#define LIST_ADD(head, node)                                    \
+            if ((head) != NULL) {                               \
+                (node)->next = (head);                          \
+                (node)->prev = (head)->prev;                    \
+                (head)->prev->next = (node);                    \
+                (head)->prev = (node);                          \
+            } else {                                            \
+                (node)->next = (node)->prev = (node);           \
+                (head) = (node);                                \
+            }
+
+/// Doubly linked list remove node
+#define LIST_DEL(head, node)                                    \
+            if ((node->next) != (node)) {                       \
+                (node)->next->prev = (node)->prev;              \
+                (node)->prev->next = (node)->next;              \
+                if ((head) == (node)) (head) = (node)->next;    \
+            } else {                                            \
+                (head) = NULL;                                  \
+            }
+
+/// Log and print an unrecoverable error message and exit
+#define FATAL(fmt, arg...)  do { ERROR(fmt, ##arg); abort(); } while (0)
+
 /// Page size
 typedef char unvme_page_t[4096];
 
@@ -65,7 +90,7 @@ typedef struct _unvme_desc {
     u32                     opc;        ///< op code
     u32                     id;         ///< descriptor id
     void*                   sentinel;   ///< sentinel check
-    struct _unvme_ioq*      ioq;        ///< IO queue context owner
+    struct _unvme_queue*    q;        ///< IO queue context owner
     struct _unvme_desc*     prev;       ///< previous descriptor node
     struct _unvme_desc*     next;       ///< next descriptor node
     int                     error;      ///< error status
@@ -74,11 +99,12 @@ typedef struct _unvme_desc {
 } unvme_desc_t;
 
 /// IO queue entry
-typedef struct _unvme_ioq {
-    nvme_queue_t            nvmeq;      ///< NVMe associated queue
+typedef struct _unvme_queue {
+    nvme_queue_t*           nvmeq;      ///< NVMe associated queue
     vfio_dma_t*             sqdma;      ///< submission queue mem
     vfio_dma_t*             cqdma;      ///< completion queue mem
     vfio_dma_t*             prplist;    ///< PRP list
+    u32                     size;       ///< queue depth
     u16                     cid;        ///< next cid to check and use
     int                     cidcount;   ///< number of pending cids
     int                     desccount;  ///< number of pending descriptors
@@ -87,18 +113,17 @@ typedef struct _unvme_ioq {
     unvme_desc_t*           desclist;   ///< use descriptor list
     unvme_desc_t*           descfree;   ///< free descriptor list
     unvme_desc_t*           descnext;   ///< next pending descriptor to process
-} unvme_ioq_t;
+} unvme_queue_t;
 
 /// Device context
 typedef struct _unvme_device {
     vfio_device_t           vfiodev;    ///< VFIO device
     nvme_device_t           nvmedev;    ///< NVMe device
-    vfio_dma_t*             asqdma;     ///< admin submission queue mem
-    vfio_dma_t*             acqdma;     ///< admin completion queue mem
+    unvme_queue_t           adminq;     ///< adminq queue
+    int                     refcount;   ///< reference count
     unvme_iomem_t           iomem;      ///< IO memory tracker
     unvme_ns_t              ns;         ///< controller namespace (id=0)
-    int                     refcount;   ///< reference count
-    unvme_ioq_t*            ioqs;       ///< pointer to IO queues
+    unvme_queue_t*          ioqs;       ///< pointer to IO queues
 } unvme_device_t;
 
 /// Session context
@@ -114,7 +139,8 @@ int unvme_do_close(const unvme_ns_t* ns);
 void* unvme_do_alloc(const unvme_ns_t* ns, u64 size);
 int unvme_do_free(const unvme_ns_t* ses, void* buf);
 int unvme_do_poll(unvme_desc_t* desc, int sec, u32* cqe_cs);
-unvme_desc_t* unvme_rw(const unvme_ns_t* ns, int qid, int opc, void* buf, u64 slba, u32 nlb);
+unvme_desc_t* unvme_do_cmd(const unvme_ns_t* ns, int qid, int opc, int nsid, void* buf, u64 bufsz, u32 cdw10_15[6]);
+unvme_desc_t* unvme_do_rw(const unvme_ns_t* ns, int qid, int opc, void* buf, u64 slba, u32 nlb);
 
 #endif  // _UNVME_CORE_H
 

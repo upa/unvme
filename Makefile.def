@@ -39,6 +39,10 @@ CPPFLAGS+=-D_GNU_SOURCE
 # To turn on debug message logging
 #CPPFLAGS+=-DUNVME_DEBUG
 
-# To build the ioengine modules, specify fio directory where the header files
+# To use identity map for DMA address # for faster submission time
+# (but may cause DMA overlapping for applications with high memory usage)
+#CPPFLAGS+=-DUNVME_IDENTITY_MAP_DMA
+
+# To build the ioengine modules, specify fio directory where header files are
 #FIODIR:=/opt/fio
 

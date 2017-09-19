@@ -51,7 +51,7 @@ typedef uint32_t        u32;        ///< 32-bit unsigned
 typedef uint64_t        u64;        ///< 64-bit unsigned
 #endif // _U_TYPE
 
-#define UNVME_TIMEOUT   30          ///< default I/O timeout in seconds
+#define UNVME_TIMEOUT   60          ///< default timeout in seconds
 #define UNVME_QSIZE     256         ///< default I/O queue size
 
 /// Namespace attributes structure
@@ -82,12 +82,12 @@ typedef struct _unvme_ns {
     void*               ses;        ///< associated session
 } unvme_ns_t;
 
-/// I/O descriptor (not to be copied and cleared upon apoll completion)
+/// I/O descriptor (not to be copied and is cleared upon apoll completion)
 typedef struct _unvme_iod {
-    void*               buf;        ///< data buffer (submitted)
-    u64                 slba;       ///< starting lba (submitted)
-    u32                 nlb;        ///< number of blocks (submitted)
-    u32                 qid;        ///< queue id (submitted)
+    void*               buf;        ///< data buffer (as submitted)
+    u64                 slba;       ///< starting lba (as submitted)
+    u32                 nlb;        ///< number of blocks (as submitted)
+    u32                 qid;        ///< queue id (as submitted)
     u32                 opc;        ///< op code
     u32                 id;         ///< descriptor id
 } *unvme_iod_t;
@@ -102,9 +102,12 @@ int unvme_free(const unvme_ns_t* ns, void* buf);
 
 int unvme_write(const unvme_ns_t* ns, int qid, const void* buf, u64 slba, u32 nlb);
 int unvme_read(const unvme_ns_t* ns, int qid, void* buf, u64 slba, u32 nlb);
+int unvme_cmd(const unvme_ns_t* ns, int qid, int opc, int nsid, void* buf, u64 bufsz, u32 cdw10_15[6], u32* cqe_cs);
 
 unvme_iod_t unvme_awrite(const unvme_ns_t* ns, int qid, const void* buf, u64 slba, u32 nlb);
 unvme_iod_t unvme_aread(const unvme_ns_t* ns, int qid, void* buf, u64 slba, u32 nlb);
+unvme_iod_t unvme_acmd(const unvme_ns_t* ns, int qid, int opc, int nsid, void* buf, u64 bufsz, u32 cdw10_15[6]);
+
 int unvme_apoll(unvme_iod_t iod, int timeout);
 int unvme_apoll_cs(unvme_iod_t iod, int timeout, u32* cqe_cs);
 

@@ -1,7 +1,9 @@
 *.o
+*.a
+*.so
+*.pyc
 *.*~
 src/.model
-src/libunvme.a
 src/unvmed
 test/unvme/*_test
 test/unvme/unvme_info

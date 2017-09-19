@@ -41,6 +41,7 @@ lint:
 
 clean:
 	@(for d in $(SUBDIRS); do $(MAKE) -C $$d clean; done)
+	$(RM) python/*.pyc
 
 .PHONY: all lint clean $(SUBDIRS)
 

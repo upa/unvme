@@ -104,6 +104,23 @@ int unvme_free(const unvme_ns_t* ns, void* buf)
 }
 
 /**
+ * Submit a generic or vendor specific command.
+ * @param   ns          namespace handle
+ * @param   qid         client queue index (-1 for admin queue)
+ * @param   opc         command op code
+ * @param   nsid        namespace id
+ * @param   buf         data buffer (from unvme_alloc)
+ * @param   bufsz       data buffer size
+ * @param   cdw10_15    NVMe command word 10 through 15
+ * @return  descriptor or NULL if failed.
+ */
+inline unvme_iod_t unvme_acmd(const unvme_ns_t* ns, int qid, int opc, int nsid,
+                              void* buf, u64 bufsz, u32 cdw10_15[6])
+{
+    return (unvme_iod_t)unvme_do_cmd(ns, qid, opc, nsid, buf, bufsz, cdw10_15);
+}
+
+/**
  * Read data from specified logical blocks on device.
  * @param   ns          namespace handle
  * @param   qid         client queue index
@@ -112,9 +129,9 @@ int unvme_free(const unvme_ns_t* ns, void* buf)
  * @param   nlb         number of logical blocks
  * @return  I/O descriptor or NULL if failed.
  */
-unvme_iod_t unvme_aread(const unvme_ns_t* ns, int qid, void* buf, u64 slba, u32 nlb)
+inline unvme_iod_t unvme_aread(const unvme_ns_t* ns, int qid, void* buf, u64 slba, u32 nlb)
 {
-    return (unvme_iod_t)unvme_rw(ns, qid, NVME_CMD_READ, buf, slba, nlb);
+    return (unvme_iod_t)unvme_do_rw(ns, qid, NVME_CMD_READ, buf, slba, nlb);
 }
 
 /**
@@ -126,10 +143,10 @@ unvme_iod_t unvme_aread(const unvme_ns_t* ns, int qid, void* buf, u64 slba, u32 
  * @param   nlb         number of logical blocks
  * @return  I/O descriptor or NULL if failed.
  */
-unvme_iod_t unvme_awrite(const unvme_ns_t* ns, int qid,
+inline unvme_iod_t unvme_awrite(const unvme_ns_t* ns, int qid,
                          const void* buf, u64 slba, u32 nlb)
 {
-    return (unvme_iod_t)unvme_rw(ns, qid, NVME_CMD_WRITE, (void*)buf, slba, nlb);
+    return (unvme_iod_t)unvme_do_rw(ns, qid, NVME_CMD_WRITE, (void*)buf, slba, nlb);
 }
 
 /**
@@ -139,7 +156,7 @@ unvme_iod_t unvme_awrite(const unvme_ns_t* ns, int qid,
  * @param   timeout     in seconds
  * @return  0 if ok else error status (-1 for timeout).
  */
-int unvme_apoll(unvme_iod_t iod, int timeout)
+inline int unvme_apoll(unvme_iod_t iod, int timeout)
 {
     return unvme_do_poll((unvme_desc_t*)iod, timeout, NULL);
 }
@@ -152,9 +169,32 @@ int unvme_apoll(unvme_iod_t iod, int timeout)
  * @param   cqe_cs      CQE command specific DW0 returned
  * @return  0 if ok else error status (-1 for timeout).
  */
-int unvme_apoll_cs(unvme_iod_t iod, int timeout, u32* cqe_cs)
+inline int unvme_apoll_cs(unvme_iod_t iod, int timeout, u32* cqe_cs)
 {
     return unvme_do_poll((unvme_desc_t*)iod, timeout, cqe_cs);
+}
+
+/**
+ * Submit a generic or vendor specific command and then poll for completion.
+ * @param   ns          namespace handle
+ * @param   qid         client queue index (-1 for admin queue)
+ * @param   opc         command op code
+ * @param   nsid        namespace id
+ * @param   buf         data buffer (from unvme_alloc)
+ * @param   bufsz       data buffer size
+ * @param   cdw10_15    NVMe command word 10 through 15
+ * @param   cqe_cs      CQE command specific DW0 returned
+ * @return  descriptor or NULL if failed.
+ */
+int unvme_cmd(const unvme_ns_t* ns, int qid, int opc, int nsid,
+              void* buf, u64 bufsz, u32 cdw10_15[6], u32* cqe_cs)
+{
+    unvme_iod_t iod = unvme_acmd(ns, qid, opc, nsid, buf, bufsz, cdw10_15);
+    if (iod) {
+        sched_yield();
+        return unvme_apoll_cs(iod, UNVME_TIMEOUT, cqe_cs);
+    }
+    return -1;
 }
 
 /**
@@ -168,10 +208,10 @@ int unvme_apoll_cs(unvme_iod_t iod, int timeout, u32* cqe_cs)
  */
 int unvme_read(const unvme_ns_t* ns, int qid, void* buf, u64 slba, u32 nlb)
 {
-    unvme_desc_t* desc = unvme_rw(ns, qid, NVME_CMD_READ, buf, slba, nlb);
-    if (desc) {
+    unvme_iod_t iod = unvme_aread(ns, qid, buf, slba, nlb);
+    if (iod) {
         sched_yield();
-        return unvme_do_poll(desc, UNVME_TIMEOUT, NULL);
+        return unvme_apoll(iod, UNVME_TIMEOUT);
     }
     return -1;
 }
@@ -188,10 +228,10 @@ int unvme_read(const unvme_ns_t* ns, int qid, void* buf, u64 slba, u32 nlb)
 int unvme_write(const unvme_ns_t* ns, int qid,
                 const void* buf, u64 slba, u32 nlb)
 {
-    unvme_desc_t* desc = unvme_rw(ns, qid, NVME_CMD_WRITE, (void*)buf, slba, nlb);
-    if (desc) {
+    unvme_iod_t iod = unvme_awrite(ns, qid, buf, slba, nlb);
+    if (iod) {
         sched_yield();
-        return unvme_do_poll(desc, UNVME_TIMEOUT, NULL);
+        return unvme_apoll(iod, UNVME_TIMEOUT);
     }
     return -1;
 }

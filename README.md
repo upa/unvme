@@ -5,28 +5,32 @@ UNVMe is a user space NVMe driver developed at Micron Technology.
 
 The driver in this model is implemented as a library (libunvme.a) that
 applications can be linked with.  Upon start, an application will first
-initialize the NVMe device(s) and then can perform I/O directly.
+initialize the NVMe device(s) and then, afterward, it can submit and process
+I/O directly from the user space application to the device.
 
-Note that an application can access multiple devices simultaneously, but 
-a device can only be accessed by one application at any given time.
+UNVMe application combines the application and driver into one program and
+thus it takes complete ownership of a device upon execution, so an NVMe device
+can only be accessed by one application at any given time.  However, a UNVMe
+application can access multiple devices simultaneously.
 Device name is to be specified in PCI format with optional NSID
 (e.g. 0a:00.0 or 0a:00.0/1). NSID 1 is assumed if /NSID is omitted.
 
-User space driver, in general, is a specially customized solution.
-Applications must use the provided APIs to access the device instead of
-the system provided POSIX APIs.
+UNVMe applications must use the provided APIs instead of the typical system
+POSIX APIs to access a device.
 
 
 A design note:  UNVMe is designed modularly with independent components
-including NVME (unvme_nvme.h) and VFIO (unvme_vfio.h), in which the driver
-itself is built on top of those modules.
+including nvme (unvme_nvme.h) and vfio (unvme_vfio.h), in which the unvme 
+interface is a module layered on top of the nvme and vfio modules.
 
-The programs under test/nvme are built directly on those modules independent
-of the UNVMe driver.  They are served as examples for building individual
-NVMe admin commands.
 
-The programs under test/unvme are examples for developing applications
-using the UNVMe interface (unvme.h).
+The programs under test/nvme are built directly on nvme and vfio modules
+without dependency on the unvme module.  They serve as examples for building
+individual NVMe admin commands.
+
+The programs under test/unvme are examples for developing applications using
+the unvme interfaces (defined in unvme.h).  Note that vendor specific and NVMe
+admin commands may also be built with the provided APIs.
 
 
 
@@ -108,6 +112,17 @@ The commands under test/nvme may also be invoked individually, e.g.:
 
 
 
+Python Support
+==============
+
+Python dynamic library binding support is provided as unvme.py with examples
+under the test/python directory.
+
+    $ python test/python/unvme_info.py 0a:00.0
+    $ python test/python/unvme_get_features.py 0a:00.0
+    $ python test/python/unvme_wr_ex.py 0a:00.0
+
+
 I/O Benchmark Tests
 ===================
 
@@ -163,16 +178,18 @@ Application Programming Interfaces
 The UNVMe APIs are designed with application ease of use in mind.
 As defined in unvme.h, the following functions are supported:
 
-    unvme_open()    -   This function must be invoked first to establish a
+    unvme_open()     -  This function must be invoked first to establish a
                         connection to the specified PCI device.
 
-    unvme_close()   -   Close a device connection.
+    unvme_close()    -  Close a device connection.
 
-    unvme_alloc()   -   Allocate an I/O buffer.
 
-    unvme_free()    -   Free the allocated I/O buffer.
+    unvme_alloc()    -  Allocate an I/O buffer.
 
-    unvme_write()   -   Write the specified number of blocks (nlb) to the
+    unvme_free()     -  Free the allocated I/O buffer.
+
+
+    unvme_write()    -  Write the specified number of blocks (nlb) to the
                         device starting at logical block address (slba).
                         The buffer must be acquired from unvme_alloc().
                         The qid (range from 0 to 1 less than the number of
@@ -180,15 +197,29 @@ As defined in unvme.h, the following functions are supported:
                         thread safe I/O operations.  Each queue must only
                         be accessed by a one thread at any one time.
 
-    unvme_read()    -   Read from the device (i.e. like unvme_write).
-
-    unvme_awrite()  -   Send a write command to the device asynchronously
+    unvme_awrite()   -  Submit a write command to the device asynchronously
                         and return immediately.  The returned descriptor
-                        is used via apoll() to poll for completion.
+                        is used via apoll() or apoll_cs() for completion.
 
-    unvme_aread()   -   Send an asynchronous read (i.e. like unvme_awrite).
 
-    unvme_apoll()   -   Poll an asynchronous read/write for completion.
+    unvme_read()     -  Read from the device (i.e. like unvme_write).
+
+    unvme_aread()    -  Submit an asynchronous read (i.e. like unvme_awrite).
+
+
+    unvme_cmd()      -  Issue a generic or vendor specific command to 
+                        the device.
+
+    unvme_acmd()     -  Submit a generic or vendor specific command to
+                        the device asynchronously and return immediately.
+                        The returned descriptor is used via apoll() or
+                        apoll_cs() for command completion.
+
+
+    unvme_apoll()    -  Poll an asynchronous read/write for completion.
+
+    unvme_apoll_cs() -  Poll an asynchronous read/write for completion with
+                        NVMe command specific DW0 status returned.
 
 
 

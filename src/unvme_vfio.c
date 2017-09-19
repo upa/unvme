@@ -54,9 +54,6 @@
 /// Starting device DMA address
 #define VFIO_IOVA           0x800000000
 
-/// Adjust to 4K page aligned size
-#define VFIO_PASIZE(n)      (((n) + 0xfff) & ~0xfff)
-
 /// IRQ index names
 const char* vfio_irq_names[] = { "INTX", "MSI", "MSIX", "ERR", "REQ" };
 
@@ -99,7 +96,8 @@ static vfio_mem_t* vfio_mem_alloc(vfio_device_t* dev, size_t size, void* pmb)
 {
     vfio_mem_t* mem = zalloc(sizeof(*mem));
     mem->size = size;
-    size = VFIO_PASIZE(size);
+    size_t mask = dev->pagesize - 1;
+    size = (size + mask) & ~mask;
 
     if (pmb) {
         mem->dma.buf = pmb;
@@ -116,8 +114,12 @@ static vfio_mem_t* vfio_mem_alloc(vfio_device_t* dev, size_t size, void* pmb)
         .argsz = sizeof(map),
         .flags = (VFIO_DMA_MAP_FLAG_READ | VFIO_DMA_MAP_FLAG_WRITE),
         .size = (__u64)size,
-        .iova = dev->iovanext,
         .vaddr = (__u64)mem->dma.buf,
+#ifdef UNVME_IDENTITY_MAP_DMA
+        .iova = (__u64)mem->dma.buf & dev->iovamask,
+#else
+        .iova = dev->iovanext,
+#endif
     };
 
     if (ioctl(dev->contfd, VFIO_IOMMU_MAP_DMA, &map) < 0) {
@@ -320,6 +322,7 @@ vfio_device_t* vfio_create(vfio_device_t* dev, int pci)
     if (!dev) dev = zalloc(sizeof(*dev));
     else dev->ext = 1;
     dev->pci = pci;
+    dev->pagesize = sysconf(_SC_PAGESIZE);
     dev->iovabase = VFIO_IOVA;
     dev->iovanext = dev->iovabase;
     if (pthread_mutex_init(&dev->lock, 0)) return NULL;
@@ -411,6 +414,38 @@ vfio_device_t* vfio_create(vfio_device_t* dev, int pci)
         if (i == VFIO_PCI_MSIX_IRQ_INDEX && irq.count != dev->msixsize)
             FATAL("VFIO_DEVICE_GET_IRQ_INFO MSIX count %d != %d", irq.count, dev->msixsize);
     }
+
+#ifdef  UNVME_IDENTITY_MAP_DMA
+    // Set up mask to support identity IOVA map option
+    struct vfio_iommu_type1_dma_map map = {
+        .argsz = sizeof(map),
+        .flags = (VFIO_DMA_MAP_FLAG_READ | VFIO_DMA_MAP_FLAG_WRITE),
+        .iova = dev->iovabase,
+        .size = dev->pagesize,
+    };
+    struct vfio_iommu_type1_dma_unmap unmap = {
+        .argsz = sizeof(unmap),
+        .size = dev->pagesize,
+    };
+
+    map.vaddr = (__u64)mmap(0, map.size, PROT_READ|PROT_WRITE,
+                            MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+    if ((void*)map.vaddr == MAP_FAILED)
+            FATAL("mmap: %s", strerror(errno));
+    while (map.iova) {
+        if (ioctl(dev->contfd, VFIO_IOMMU_MAP_DMA, &map) < 0) {
+            if (errno == EFAULT) break;
+            FATAL("VFIO_IOMMU_MAP_DMA: %s", strerror(errno));
+        }
+        unmap.iova = map.iova;
+        if (ioctl(dev->contfd, VFIO_IOMMU_UNMAP_DMA, &unmap) < 0)
+            FATAL("VFIO_IOMMU_MUNAP_DMA: %s", strerror(errno));
+        map.iova <<= 1;
+    }
+    dev->iovamask = map.iova - 1;
+    (void) munmap((void*)map.vaddr, map.size);
+    DEBUG_FN("iovamask=%#llx", dev->iovamask);
+#endif
 
     return (vfio_device_t*)dev;
 }

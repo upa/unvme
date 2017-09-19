@@ -67,9 +67,11 @@ typedef struct _vfio_device {
     int                     contfd;     ///< container file descriptor
     int                     msixsize;   ///< max MSIX table size
     int                     msixnvec;   ///< number of enabled MSIX vectors
+    int                     pagesize;   ///< system page size
     int                     ext;        ///< externally allocated flag
-    __u64                   iovabase;   ///< next DMA (virtual IO) address
-    __u64                   iovanext;   ///< next DMA (virtual IO) address
+    __u64                   iovabase;   ///< IO virtual address base
+    __u64                   iovanext;   ///< next IO virtual address to use
+    __u64                   iovamask;   ///< max IO virtual address mask
     pthread_mutex_t         lock;       ///< multithreaded lock
     vfio_mem_t*             memlist;    ///< memory allocated list
 } vfio_device_t;

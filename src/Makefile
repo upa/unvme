@@ -32,17 +32,22 @@
 include ../Makefile.def
 
 TARGET = libunvme.a
+TARGET_SO = libunvme.so
 
 INCS = $(wildcard *.h)
 SRCS = $(wildcard *.c)
 OBJS = $(SRCS:.c=.o)
+LDLIBS = -lrt
 
-all: $(TARGET)
+all: $(TARGET) $(TARGET_SO)
 
 $(OBJS): $(INCS)
 
 $(TARGET): $(OBJS)
 	$(AR) crs $@ $^
+
+$(TARGET_SO): $(OBJS)
+	$(CC) -shared -rdynamic -o $@ $^ -lrt
 
 %.i: %.c
 	$(CPP) $(CPPFLAGS) -o $@ $<
@@ -52,7 +57,7 @@ lint: clean $(OBJS)
 	@$(RM) *.o
 
 clean:
-	$(RM) $(TARGET) *.o *.i
+	$(RM) *.a *.so *.o *.i
 	@if [ "$(HOME)" = "/root" ]; then $(RM) /dev/shm/unvme*; fi
 
 .PHONY: all lint clean

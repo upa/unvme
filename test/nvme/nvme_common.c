@@ -70,7 +70,7 @@ static void nvme_setup(const char* pciname, int aqsize)
     admincq = vfio_dma_alloc(vfiodev, aqsize * sizeof(nvme_cq_entry_t));
     if (!admincq) errx(1, "vfio_dma_alloc");
 
-    if (!nvme_setup_adminq(nvmedev, aqsize, adminsq->buf, adminsq->addr,
+    if (!nvme_adminq_setup(nvmedev, aqsize, adminsq->buf, adminsq->addr,
                                             admincq->buf, admincq->addr)) {
         errx(1, "nvme_setup_adminq");
     }

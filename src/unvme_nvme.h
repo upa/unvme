@@ -544,7 +544,8 @@ typedef struct _nvme_queue {
 /// Device context
 typedef struct _nvme_device {
     nvme_controller_reg_t*  reg;        ///< register address map
-    struct _nvme_queue      adminq;     ///< admin queue reference
+    nvme_queue_t            adminq;     ///< admin queue reference
+    u64                     rdtsec;     ///< rdtsc per second
     u32                     maxqcount;  ///< max queue count
     u32                     maxqsize;   ///< max queue size
     u16                     dbstride;   ///< doorbell stride (in word size)
@@ -560,10 +561,9 @@ typedef struct _nvme_device {
 nvme_device_t* nvme_create(nvme_device_t* dev, int mapfd);
 void nvme_delete(nvme_device_t* dev);
 
-nvme_queue_t* nvme_setup_adminq(nvme_device_t* dev, int qsize, void* sqbuf, u64 sqpa, void* cqbuf, u64 cqpa);
-
-nvme_queue_t* nvme_create_ioq(nvme_device_t* dev, nvme_queue_t* ioq, int id, int qsize, void* sqbuf, u64 sqpa, void* cqbuf, u64 cqpa);
-int nvme_delete_ioq(nvme_queue_t* ioq);
+nvme_queue_t* nvme_adminq_setup(nvme_device_t* dev, int qsize, void* sqbuf, u64 sqpa, void* cqbuf, u64 cqpa);
+nvme_queue_t* nvme_ioq_create(nvme_device_t* dev, nvme_queue_t* ioq, int id, int qsize, void* sqbuf, u64 sqpa, void* cqbuf, u64 cqpa);
+int nvme_ioq_delete(nvme_queue_t* ioq);
 
 int nvme_acmd_identify(nvme_device_t* dev, int nsid, u64 prp1, u64 prp2);
 int nvme_acmd_get_log_page(nvme_device_t* dev, int nsid, int lid, int numd, u64 prp1, u64 prp2);
@@ -574,10 +574,7 @@ int nvme_acmd_create_sq(nvme_queue_t* ioq, u64 prp);
 int nvme_acmd_delete_cq(nvme_queue_t* ioq);
 int nvme_acmd_delete_sq(nvme_queue_t* ioq);
 
-int nvme_acmd_vs(nvme_device_t* dev, int nsid, u64 prp1, u64 prp2, int opc, u32 cdw10_15[6]);
-
-int nvme_cmd_vs(nvme_queue_t* ioq, u16 cid, int nsid, u64 prp1, u64 prp2, int opc, u32 cdw10_15[6]);
-
+int nvme_cmd_vs(nvme_queue_t* q, int opc, u16 cid, int nsid, u64 prp1, u64 prp2, u32 cdw10_15[6]);
 int nvme_cmd_rw(nvme_queue_t* ioq, int opc, u16 cid, int nsid, u64 slba, int nlb, u64 prp1, u64 prp2);
 int nvme_cmd_read(nvme_queue_t* ioq, u16 cid, int nsid, u64 slba, int nlb, u64 prp1, u64 prp2);
 int nvme_cmd_write(nvme_queue_t* ioq, u16 cid, int nsid, u64 slba, int nlb, u64 prp1, u64 prp2);

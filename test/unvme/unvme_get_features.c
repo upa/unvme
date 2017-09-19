@@ -31,10 +31,16 @@
 
 /**
  * @file
- * @brief Invoke NVMe get features command.
+ * @brief An example using unvme_cmd (generic command) to get features.
  */
 
-#include "nvme_common.c"
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <err.h>
+
+#include "unvme.h"
+#include "unvme_nvme.h" // for printing get log page structures
 
 static char* features[] = {
     "",
@@ -73,14 +79,18 @@ int main(int argc, char* argv[])
         }
     }
 
-    nvme_setup(argv[1], 8);
-    vfio_dma_t* dma = vfio_dma_alloc(vfiodev, sizeof(nvme_feature_lba_data_t));
-    if (!dma) errx(1, "vfio_dma_alloc");
-    u32 res;
+    const unvme_ns_t* ns = unvme_open(argv[1]);
+    if (!ns) errx(1, "unvme_open");
+    u64 bufsz = sizeof(nvme_feature_lba_data_t);
+    void* buf = unvme_alloc(ns, bufsz);
+    if (!buf) errx(1, "unvme_alloc");
 
+    u32 cdw10_15[6] = { 0 };
+    u32 res;
     int fid;
     for (fid = NVME_FEATURE_ARBITRATION; fid <= NVME_FEATURE_ASYNC_EVENT; fid++) {
-        int err = nvme_acmd_get_features(nvmedev, nsid, fid, dma->addr, 0L, &res);
+        cdw10_15[0] = fid;
+        int err = unvme_cmd(ns, -1, NVME_ACMD_GET_FEATURES, nsid, buf, bufsz, cdw10_15, &res);
 
         if (err) {
             printf("%-30s <feature not supported>\n", features[fid]);
@@ -121,7 +131,8 @@ int main(int argc, char* argv[])
         }
     }
 
-    nvme_cleanup();
+    unvme_free(ns, buf);
+    unvme_close(ns);
     return 0;
 }
 

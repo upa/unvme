@@ -73,8 +73,6 @@ static inline void w64(nvme_device_t* dev, u64* addr, u64 val)
 
 /// @endcond
 
-static u64 nvme_rdtsec;                 ///< rdtsc per second
-
 
 /**
  * Wait for controller enabled/disabled state.
@@ -207,7 +205,7 @@ int nvme_wait_completion(nvme_queue_t* q, int cid, int timeout)
             }
             return stat;
         } else if (endtsc == 0) {
-            endtsc = rdtsc() + timeout * nvme_rdtsec;
+            endtsc = rdtsc() + timeout * q->dev->rdtsec;
         }
     } while (rdtsc() < endtsc);
 
@@ -240,7 +238,7 @@ int nvme_acmd_identify(nvme_device_t* dev, int nsid, u64 prp1, u64 prp2)
 
     DEBUG_FN("cid=%#x nsid=%d", cid, nsid);
     int err = nvme_submit_cmd(adminq);
-    if (!err) err = nvme_wait_completion(adminq, cid, 10);
+    if (!err) err = nvme_wait_completion(adminq, cid, 30);
     return err;
 }
 
@@ -273,8 +271,7 @@ int nvme_acmd_get_log_page(nvme_device_t* dev, int nsid,
 
     DEBUG_FN("cid=%#x lid=%d", cid, lid);
     int err = nvme_submit_cmd(adminq);
-    if (!err) err = nvme_wait_completion(adminq, cid, 10);
-    if (err) ERROR();
+    if (!err) err = nvme_wait_completion(adminq, cid, 30);
     return err;
 }
 
@@ -307,9 +304,8 @@ int nvme_acmd_get_features(nvme_device_t* dev, int nsid,
 
     DEBUG_FN("cid=%#x fid=%d", cid, fid);
     int err = nvme_submit_cmd(adminq);
-    if (!err) err = nvme_wait_completion(adminq, cid, 10);
+    if (!err) err = nvme_wait_completion(adminq, cid, 30);
     if (!err) *res = adminq->cq[cid].cs;
-    else ERROR();
     return err;
 }
 
@@ -343,9 +339,8 @@ int nvme_acmd_set_features(nvme_device_t* dev, int nsid,
 
     DEBUG_FN("cid=%#x fid=%d", cid, fid);
     int err = nvme_submit_cmd(adminq);
-    if (!err) err = nvme_wait_completion(adminq, cid, 10);
+    if (!err) err = nvme_wait_completion(adminq, cid, 30);
     if (!err) *res = adminq->cq[cid].cs;
-    else ERROR();
     return err;
 }
 
@@ -372,8 +367,7 @@ int nvme_acmd_create_cq(nvme_queue_t* ioq, u64 prp)
 
     DEBUG_FN("q=%d cid=%#x qs=%d", ioq->id, cid, ioq->size);
     int err = nvme_submit_cmd(adminq);
-    if (!err) err = nvme_wait_completion(adminq, cid, 10);
-    if (err) ERROR();
+    if (!err) err = nvme_wait_completion(adminq, cid, 30);
     return err;
 }
 
@@ -402,8 +396,7 @@ int nvme_acmd_create_sq(nvme_queue_t* ioq, u64 prp)
 
     DEBUG_FN("q=%d cid=%#x qs=%d", ioq->id, cid, ioq->size);
     int err = nvme_submit_cmd(adminq);
-    if (!err) err = nvme_wait_completion(adminq, cid, 10);
-    if (err) ERROR();
+    if (!err) err = nvme_wait_completion(adminq, cid, 30);
     return err;
 }
 
@@ -428,20 +421,8 @@ static inline int nvme_acmd_delete_ioq(nvme_queue_t* ioq, int opc)
     DEBUG_FN("%cq=%d cid=%#x",
              opc == NVME_ACMD_DELETE_CQ ? 'c' : 's', ioq->id, cid);
     int err = nvme_submit_cmd(adminq);
-    if (!err) err = nvme_wait_completion(adminq, cid, 10);
-    if (err) ERROR();
+    if (!err) err = nvme_wait_completion(adminq, cid, 30);
     return err;
-}
-
-/**
- * NVMe delete I/O submission queue command.
- * Submit the command and wait for completion.
- * @param   ioq         io queue
- * @return  0 if ok else error code.
- */
-int nvme_acmd_delete_sq(nvme_queue_t* ioq)
-{
-    return nvme_acmd_delete_ioq(ioq, NVME_ACMD_DELETE_SQ);
 }
 
 /**
@@ -456,37 +437,31 @@ int nvme_acmd_delete_cq(nvme_queue_t* ioq)
 }
 
 /**
- * NVMe submit a vendor specific command.
- * @param   dev         device context
- * @param   nsid        namespace
- * @param   prp1        PRP1 address
- * @param   prp2        PRP2 address
- * @param   opc         vendor specific op code
- * @param   cdw10_15    command dwords 10-15
- * @return  0 if ok else -1.
+ * NVMe delete I/O submission queue command.
+ * Submit the command and wait for completion.
+ * @param   ioq         io queue
+ * @return  0 if ok else error code.
  */
-int nvme_acmd_vs(nvme_device_t* dev, int nsid, u64 prp1, u64 prp2,
-                 int opc, u32 cdw10_15[6])
+int nvme_acmd_delete_sq(nvme_queue_t* ioq)
 {
-    nvme_queue_t* adminq = &dev->adminq;
-    return nvme_cmd_vs(adminq, adminq->sq_tail, nsid, prp1, prp2, opc, cdw10_15);
+    return nvme_acmd_delete_ioq(ioq, NVME_ACMD_DELETE_SQ);
 }
 
 /**
- * NVMe submit a vendor specific command.
- * @param   ioq         io queue
+ * NVMe submit a vendor specific (i.e. generic) command.
+ * @param   q           NVMe (admin or IO) queue
+ * @param   opc         vendor specific op code
  * @param   cid         command id
  * @param   nsid        namespace
  * @param   prp1        PRP1 address
  * @param   prp2        PRP2 address
- * @param   opc         vendor specific op code
  * @param   cdw10_15    command dwords 10-15
  * @return  0 if ok else -1.
  */
-int nvme_cmd_vs(nvme_queue_t* ioq, u16 cid, int nsid, u64 prp1, u64 prp2,
-                int opc, u32 cdw10_15[6])
+int nvme_cmd_vs(nvme_queue_t* q, int opc, u16 cid, int nsid,
+                u64 prp1, u64 prp2, u32 cdw10_15[6])
 {
-    nvme_command_vs_t* cmd = &ioq->sq[ioq->sq_tail].vs;
+    nvme_command_vs_t* cmd = &q->sq[q->sq_tail].vs;
 
     memset(cmd, 0, sizeof (*cmd));
     cmd->common.opc = opc;
@@ -496,8 +471,8 @@ int nvme_cmd_vs(nvme_queue_t* ioq, u16 cid, int nsid, u64 prp1, u64 prp2,
     cmd->common.prp2 = prp2;
     if (cdw10_15) memcpy(cmd->cdw10_15, cdw10_15, sizeof(cmd->cdw10_15));
     DEBUG_FN("q=%d t=%d h=%d cid=%#x nsid=%d opc=%#x",
-             ioq->id, ioq->sq_tail, ioq->sq_head, cid, nsid, opc);
-    return nvme_submit_cmd(ioq);
+             q->id, q->sq_tail, q->sq_head, cid, nsid, opc);
+    return nvme_submit_cmd(q);
 }
 
 /**
@@ -577,7 +552,7 @@ int nvme_cmd_write(nvme_queue_t* ioq, u16 cid, int nsid,
  * @param   cqpa        admin completion IO physical address
  * @return  pointer to the created io queue or NULL if failure.
  */
-nvme_queue_t* nvme_create_ioq(nvme_device_t* dev, nvme_queue_t* ioq,
+nvme_queue_t* nvme_ioq_create(nvme_device_t* dev, nvme_queue_t* ioq,
             int id, int qsize, void* sqbuf, u64 sqpa, void* cqbuf, u64 cqpa)
 {
     if (!ioq) ioq = zalloc(sizeof(*ioq));
@@ -600,10 +575,10 @@ nvme_queue_t* nvme_create_ioq(nvme_device_t* dev, nvme_queue_t* ioq,
 
 /**
  * Delete an IO submission-completion queue pair.
- * @param   ioq         io queue to setup
+ * @param   ioq         io queue to delete
  * @return  0 if ok else -1.
  */
-int nvme_delete_ioq(nvme_queue_t* ioq)
+int nvme_ioq_delete(nvme_queue_t* ioq)
 {
     if (!ioq) return -1;
     if (nvme_acmd_delete_sq(ioq) || nvme_acmd_delete_cq(ioq)) return -1;
@@ -621,7 +596,7 @@ int nvme_delete_ioq(nvme_queue_t* ioq)
  * @param   cqpa        admin completion physical address
  * @return  pointer to the admin queue or NULL if failure.
  */
-nvme_queue_t* nvme_setup_adminq(nvme_device_t* dev, int qsize,
+nvme_queue_t* nvme_adminq_setup(nvme_device_t* dev, int qsize,
                                 void* sqbuf, u64 sqpa, void* cqbuf, u64 cqpa)
 {
     if (nvme_ctlr_disable(dev)) return NULL;
@@ -669,6 +644,7 @@ nvme_device_t* nvme_create(nvme_device_t* dev, int mapfd)
 {
     if (!dev) dev = zalloc(sizeof(*dev));
     else dev->ext = 1;
+    dev->rdtsec = rdtsc_second();
 
     dev->reg = mmap(0, sizeof(nvme_controller_reg_t),
                     PROT_READ|PROT_WRITE, MAP_SHARED|MAP_LOCKED, mapfd, 0);
@@ -686,9 +662,7 @@ nvme_device_t* nvme_create(nvme_device_t* dev, int mapfd)
     dev->maxqsize = cap.mqes + 1;
     dev->dbstride = 1 << cap.dstrd;     // in u32 size offset
 
-    nvme_rdtsec = rdtsc_second();
-
-    DEBUG_FN("cap=%#lx ps=%u-%u to=%u maxqs=%u dbs=%u", cap.val,
+    DEBUG_FN("cap=%#lx mps=%u-%u to=%u maxqs=%u dbs=%u", cap.val,
              cap.mpsmin, cap.mpsmax, cap.to, dev->maxqsize, dev->dbstride);
 
     return dev;

@@ -5,18 +5,15 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <error.h>
-#include <assert.h>
-#include <pthread.h>
+#include </usr/include/err.h>
 
 #include "unvme.h"
-
 #include "config-host.h"
 #include "fio.h"
 #include "optgroup.h"       // since fio 2.4
 
 #define TDEBUG(fmt, arg...) //printf("#%s.%d " fmt "\n", __func__, td->thread_number, ##arg)
+#define FATAL(fmt, arg...)  do { warnx(fmt, ##arg); abort(); } while (0)
 
 typedef struct {
     struct io_u**       iocq;
@@ -78,13 +75,13 @@ static int do_unvme_init(struct thread_data *td)
         unvme.ns = unvme_open(pciname);
 
         if (!unvme.ns)
-            error(1, 0, "unvme_open %s failed", pciname);
+            FATAL("unvme_open %s failed", pciname);
         if (td->o.iodepth >= unvme.ns->qsize)
-            error(1, 0, "iodepth %d greater than queue size", td->o.iodepth);
+            FATAL("iodepth %d greater than queue size", td->o.iodepth);
 
         uint64_t tsc = rdtsc();
         usleep(10000);
-        unvme.rdtsc_timeout = (rdtsc() - tsc) * 100 * UNVME_TIMEOUT;
+        unvme.rdtsc_timeout = (rdtsc() - tsc) * 100 * 300; // 300 secs timeout
 
         unvme.ncpus = sysconf(_SC_NPROCESSORS_ONLN);
         printf("unvme_open %s q=%dx%d ncpus=%d\n",
@@ -95,7 +92,7 @@ static int do_unvme_init(struct thread_data *td)
 
     if (td->thread_number > unvme.ns->qcount ||
         td->o.iodepth >= unvme.ns->qsize) {
-        error(1, 0, "thread %d iodepth %d exceeds UNVMe queue limit %dx%d",
+        FATAL("thread %d iodepth %d exceeds UNVMe queue limit %dx%d",
               td->thread_number, td->o.iodepth, unvme.ns->qcount, unvme.ns->qsize-1); 
     }
 
@@ -243,14 +240,14 @@ static int fio_unvme_getevents(struct thread_data *td, unsigned int min,
                 } else if (stat == -1) {
                     if (endtsc == 0) endtsc = rdtsc() + unvme.rdtsc_timeout;
                 } else {
-                    error(1, 0, "\nunvme_apoll return %#x", stat);
+                    FATAL("\nunvme_apoll return %#x", stat);
                 }
             }
         }
         sched_yield();
     } while (rdtsc() < endtsc);
 
-    error(1, 0, "\nunvme_apoll timeout");
+    FATAL("\nunvme_apoll timeout");
     return 0;
 }
 
@@ -281,14 +278,14 @@ static int fio_unvme_queue(struct thread_data *td, struct io_u *io_u)
         TDEBUG("READ q%d %p %#lx %d", q, buf, slba, nlb);
         if ((io_u->engine_data = unvme_aread(unvme.ns, q, buf, slba, nlb)))
             return FIO_Q_QUEUED;
-        error(1, 0, "\nunvme_aread q=%d slba=%#lx nlb=%d", q, slba, nlb);
+        FATAL("\nunvme_aread q=%d slba=%#lx nlb=%d", q, slba, nlb);
         break;
 
     case DDIR_WRITE:
         TDEBUG("WRITE q%d %p %#lx %d", q, buf, slba, nlb);
         if ((io_u->engine_data = unvme_awrite(unvme.ns, q, buf, slba, nlb)))
             return FIO_Q_QUEUED;
-        error(1, 0, "\nunvme_awrite q=%d slba=%#lx nlb=%d", q, slba, nlb);
+        FATAL("\nunvme_awrite q=%d slba=%#lx nlb=%d", q, slba, nlb);
         break;
 
     default:
