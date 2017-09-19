@@ -545,8 +545,8 @@ typedef struct _nvme_queue {
 typedef struct _nvme_device {
     nvme_controller_reg_t*  reg;        ///< register address map
     struct _nvme_queue      adminq;     ///< admin queue reference
-    u16                     maxqcount;  ///< max queue count
-    u16                     maxqsize;   ///< max queue size
+    u32                     maxqcount;  ///< max queue count
+    u32                     maxqsize;   ///< max queue size
     u16                     dbstride;   ///< doorbell stride (in word size)
     u16                     timeout;    ///< in 500 ms units
     u16                     pageshift;  ///< minimum pagesize shift
