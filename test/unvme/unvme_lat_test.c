@@ -64,8 +64,8 @@ static const unvme_ns_t* ns;    ///< unvme namespace pointer
 static int qcount = 1;          ///< queue count
 static int qsize = 8;           ///< queue size
 static int runtime = 15;        ///< run time in seconds
-static u64 endtsc = 0;          ///< end run tsc
-static u64 timeout = 0;         ///< tsc elapsed timeout
+static u64 endtsc;              ///< end run tsc
+static u64 timeout;             ///< tsc elapsed timeout
 static sem_t sm_ready;          ///< semaphore to start thread
 static sem_t sm_start;          ///< semaphore to start test
 static pthread_t* ses;          ///< array of thread sessions
@@ -83,8 +83,7 @@ static u64 max_clat;            ///< maximum completimesn time
  */
 static void io_submit(int q, int rw, lat_page_t* p)
 {
-    // change lba
-    p->lba += ns->nbpp << 1;
+    p->lba = random() & ~(ns->nbpp - 1);
     if (p->lba > last_lba) p->lba &= last_lba;
 
     p->tsc = rdtsc();
@@ -198,17 +197,16 @@ void run_test(const char* name, int rw)
     for (q = 0; q < qcount; q++) sem_post(&sm_start);
     for (q = 0; q < qcount; q++) pthread_join(ses[q], 0);
 
-    /*
-    printf("%s: slat=(%lu-%lu %lu) lat=(%lu-%lu %lu) tscs ioc=%ld\n",
-            name, min_slat, max_slat, avg_slat/ioc,
-            min_clat, max_clat, avg_clat/ioc, ioc);
-    */
-
     u64 utsc = tsec / 1000000;
-    printf("%s: slat=(%.2f-%.2f %.2f) lat=(%.2f-%.2f %.2f) usecs ioc=%ld\n",
+    printf("%s: slat=(%.2f-%.2f %.2f) lat=(%.2f-%.2f %.2f) usecs ioc=%lu\n",
             name, (double)min_slat/utsc, (double)max_slat/utsc,
             (double)avg_slat/ioc/utsc, (double)min_clat/utsc,
             (double)max_clat/utsc, (double)avg_clat/ioc/utsc, ioc);
+    /*
+    printf("%s: slat=(%lu-%lu %lu) lat=(%lu-%lu %lu) tscs ioc=%lu\n",
+            name, min_slat, max_slat, avg_slat/ioc,
+            min_clat, max_clat, avg_clat/ioc, ioc);
+    */
 
     sem_destroy(&sm_ready);
     sem_destroy(&sm_start);

@@ -8,6 +8,8 @@ src/unvmed
 test/unvme/*_test
 test/unvme/unvme_info
 test/unvme/unvme_wrc
+test/unvme/unvme_get_log_page
+test/unvme/unvme_get_features
 test/nvme/nvme_identify
 test/nvme/nvme_get_log_page
 test/nvme/nvme_get_features
