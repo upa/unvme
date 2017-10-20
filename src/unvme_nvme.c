@@ -131,7 +131,7 @@ static int nvme_ctlr_enable(nvme_device_t* dev, nvme_controller_config_t cc)
 static int nvme_submit_cmd(nvme_queue_t* q)
 {
     int tail = q->sq_tail;
-    HEX_DUMP(&q->sq[tail], sizeof(nvme_sq_entry_t));
+    //HEX_DUMP(&q->sq[tail], sizeof(nvme_sq_entry_t));
     if (++tail == q->size) tail = 0;
 #if 0
     // Some SSD does not advance sq_head properly (e.g. Intel DC D3600)
@@ -174,7 +174,7 @@ int nvme_check_completion(nvme_queue_t* q, int* stat, u32* cqe_cs)
 #endif
 
     if (*stat == 0) {
-        DEBUG_FN("q=%d h=%d cid=%#x (C)", q->id, q->sq_head, cqe->cid);
+        DEBUG_FN("q=%d h=%d cid=%#x (C)", q->id, q->cq_head, cqe->cid);
     } else {
         ERROR("q=%d cid=%#x stat=%#x (dnr=%d m=%d sct=%d sc=%#x) (C)",
               q->id, cqe->cid, *stat, cqe->dnr, cqe->m, cqe->sct, cqe->sc);
@@ -236,7 +236,7 @@ int nvme_acmd_identify(nvme_device_t* dev, int nsid, u64 prp1, u64 prp2)
     cmd->common.prp2 = prp2;
     cmd->cns = nsid == 0 ? 1 : 0;
 
-    DEBUG_FN("cid=%#x nsid=%d", cid, nsid);
+    DEBUG_FN("t=%d h=%d cid=%#x nsid=%d", adminq->sq_tail, adminq->sq_head, cid, nsid);
     int err = nvme_submit_cmd(adminq);
     if (!err) err = nvme_wait_completion(adminq, cid, 30);
     return err;
@@ -269,7 +269,7 @@ int nvme_acmd_get_log_page(nvme_device_t* dev, int nsid,
     cmd->lid = lid;
     cmd->numd = numd;
 
-    DEBUG_FN("cid=%#x lid=%d", cid, lid);
+    DEBUG_FN("t=%d h=%d cid=%#x lid=%d", adminq->sq_tail, adminq->sq_head, cid, lid);
     int err = nvme_submit_cmd(adminq);
     if (!err) err = nvme_wait_completion(adminq, cid, 30);
     return err;
@@ -302,7 +302,7 @@ int nvme_acmd_get_features(nvme_device_t* dev, int nsid,
     cmd->fid = fid;
     *res = -1;
 
-    DEBUG_FN("cid=%#x fid=%d", cid, fid);
+    DEBUG_FN("t=%d h=%d cid=%#x fid=%d", adminq->sq_tail, adminq->sq_head, cid, fid);
     int err = nvme_submit_cmd(adminq);
     if (!err) err = nvme_wait_completion(adminq, cid, 30);
     if (!err) *res = adminq->cq[cid].cs;
@@ -337,7 +337,7 @@ int nvme_acmd_set_features(nvme_device_t* dev, int nsid,
     cmd->val = *res;
     *res = -1;
 
-    DEBUG_FN("cid=%#x fid=%d", cid, fid);
+    DEBUG_FN("t=%d h=%d cid=%#x fid=%d", adminq->sq_tail, adminq->sq_head, cid, fid);
     int err = nvme_submit_cmd(adminq);
     if (!err) err = nvme_wait_completion(adminq, cid, 30);
     if (!err) *res = adminq->cq[cid].cs;
@@ -365,7 +365,7 @@ int nvme_acmd_create_cq(nvme_queue_t* ioq, u64 prp)
     cmd->qid = ioq->id;
     cmd->qsize = ioq->size - 1;
 
-    DEBUG_FN("q=%d cid=%#x qs=%d", ioq->id, cid, ioq->size);
+    DEBUG_FN("t=%d h=%d cid=%#x cq=%d qs=%d", adminq->sq_tail, adminq->sq_head, cid, ioq->id, ioq->size);
     int err = nvme_submit_cmd(adminq);
     if (!err) err = nvme_wait_completion(adminq, cid, 30);
     return err;
@@ -394,7 +394,7 @@ int nvme_acmd_create_sq(nvme_queue_t* ioq, u64 prp)
     cmd->cqid = ioq->id;
     cmd->qsize = ioq->size - 1;
 
-    DEBUG_FN("q=%d cid=%#x qs=%d", ioq->id, cid, ioq->size);
+    DEBUG_FN("t=%d h=%d cid=%#x sq=%d qs=%d", adminq->sq_tail, adminq->sq_head, cid, ioq->id, ioq->size);
     int err = nvme_submit_cmd(adminq);
     if (!err) err = nvme_wait_completion(adminq, cid, 30);
     return err;
@@ -418,8 +418,8 @@ static inline int nvme_acmd_delete_ioq(nvme_queue_t* ioq, int opc)
     cmd->common.cid = cid;
     cmd->qid = ioq->id;
 
-    DEBUG_FN("%cq=%d cid=%#x",
-             opc == NVME_ACMD_DELETE_CQ ? 'c' : 's', ioq->id, cid);
+    DEBUG_FN("t=%d h=%d cid=%#x %cq=%d", adminq->sq_tail, adminq->sq_head, cid,
+             opc == NVME_ACMD_DELETE_CQ ? 'c' : 's', ioq->id);
     int err = nvme_submit_cmd(adminq);
     if (!err) err = nvme_wait_completion(adminq, cid, 30);
     return err;
@@ -500,8 +500,8 @@ int nvme_cmd_rw(nvme_queue_t* ioq, int opc, u16 cid, int nsid,
     cmd->common.prp2 = prp2;
     cmd->slba = slba;
     cmd->nlb = nlb - 1;
-    DEBUG_FN("q=%d t=%d h=%d cid=%#x nsid=%d lba=%#lx nb=%#x (%c)",
-             ioq->id, ioq->sq_tail, ioq->sq_head, cid, nsid, slba, nlb,
+    DEBUG_FN("q=%d t=%d h=%d cid=%#x nsid=%d lba=%#lx nb=%#x prp=%#lx.%#lx (%c)",
+             ioq->id, ioq->sq_tail, ioq->sq_head, cid, nsid, slba, nlb, prp1, prp2,
              opc == NVME_CMD_READ? 'R' : 'W');
     return nvme_submit_cmd(ioq);
 }

@@ -71,14 +71,14 @@ typedef struct _unvme_ns {
     u16                 pageshift;  ///< page size shift value
     u16                 bpshift;    ///< block to page shift
     u16                 nbpp;       ///< number of blocks per page
-    u16                 qcount;     ///< number of I/O queues
-    u16                 maxqcount;  ///< max number of queues supported
-    u32                 qsize;      ///< I/O queue size
-    u32                 maxqsize;   ///< max queue size supported
     u16                 maxbpio;    ///< max number of blocks per I/O
     u16                 maxppio;    ///< max number of pages per I/O
     u16                 maxiopq;    ///< max number of I/O submissions per queue
     u16                 nscount;    ///< number of namespaces available
+    u32                 qcount;     ///< number of I/O queues
+    u32                 maxqcount;  ///< max number of queues supported
+    u32                 qsize;      ///< I/O queue size
+    u32                 maxqsize;   ///< max queue size supported
     void*               ses;        ///< associated session
 } unvme_ns_t;
 

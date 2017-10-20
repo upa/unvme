@@ -165,8 +165,12 @@ int main(int argc, char** argv)
             p = buf[i];
             VERBOSE("  verify.%-2d %#8x %p %#lx\n", i, nlb, p, slba);
             for (w = 0; w < size; w++) {
-                if (p[w] != ((w << 32) + i))
-                    errx(1, "mismatch lba=%#lx word=%#lx", slba, w);
+                if (p[w] != ((w << 32) + i)) {
+                    w *= sizeof(w);
+                    slba += w / ns->blocksize;
+                    w %= ns->blocksize;
+                    errx(1, "miscompare at lba %#lx offset %#lx", slba, w);
+                }
             }
             slba += nlb;
         }

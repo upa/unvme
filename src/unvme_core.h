@@ -90,7 +90,7 @@ typedef struct _unvme_desc {
     u32                     opc;        ///< op code
     u32                     id;         ///< descriptor id
     void*                   sentinel;   ///< sentinel check
-    struct _unvme_queue*    q;        ///< IO queue context owner
+    struct _unvme_queue*    q;          ///< queue context owner
     struct _unvme_desc*     prev;       ///< previous descriptor node
     struct _unvme_desc*     next;       ///< next descriptor node
     int                     error;      ///< error status

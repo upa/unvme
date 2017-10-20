@@ -41,7 +41,7 @@ CPPFLAGS+=-D_GNU_SOURCE
 
 # To use identity map for DMA address # for faster submission time
 # (but may cause DMA overlapping for applications with high memory usage)
-#CPPFLAGS+=-DUNVME_IDENTITY_MAP_DMA
+CPPFLAGS+=-DUNVME_IDENTITY_MAP_DMA
 
 # To build the ioengine modules, specify fio directory where header files are
 #FIODIR:=/opt/fio

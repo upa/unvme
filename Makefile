@@ -29,8 +29,6 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-include ./Makefile.def
-
 INSTALLDIR ?= /usr/local
 SUBDIRS := src test ioengine doc
 

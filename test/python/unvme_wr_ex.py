@@ -55,7 +55,7 @@ class WRTest:
             pat = (lba << 24) | b
             for w in range(self.wpb):
                 if buf[i] != pat:
-                    self.error("ERROR: data miscompare at lba #%lx" % lba)
+                    self.error("ERROR: data miscompare at lba %#lx" % lba)
                 i = i + 1
             lba = lba + 1
 
@@ -63,7 +63,7 @@ class WRTest:
         random.seed(self.seed + seed)
         nlb = random.randint(1, self.maxnlb)
         lba = random.randrange(0, self.ns.blockcount - nlb - 1)
-        q = (lba + nlb) % self.ns.maxqcount
+        q = (lba + nlb) % self.ns.qcount
         return q, lba, nlb
 
     def syncTest(self):
@@ -107,17 +107,17 @@ class WRTest:
 
 # Main program.
 parser = argparse.ArgumentParser()
-parser.add_argument('--ioc', help="number of IOs per test", default=8)
-parser.add_argument('--nlb', help="max number of blocks per IO", default=65536)
+parser.add_argument('--ioc', help="number of IOs per test", type=int, default=8)
+parser.add_argument('--nlb', help="max number of blocks per IO", type=int, default=65536)
 parser.add_argument('pci', help="PCI device name (as 0a:00.0[/1] format)")
 if len(sys.argv) == 1:
     parser.print_help()
     sys.exit(1)
 opts = parser.parse_args()
 
-print("RANDOM WRITE-READ EXAMPLE TEST BEGIN")
+print("PYTHON RANDOM WRITE-READ EXAMPLE TEST BEGIN")
 ex = WRTest(opts.pci, opts.ioc, opts.nlb)
 ex.syncTest()
 ex.asyncTest()
-print("RANDOM WRITE-READ EXAMPLE TEST COMPLETE")
+print("PYTHON RANDOM WRITE-READ EXAMPLE TEST COMPLETE")
 

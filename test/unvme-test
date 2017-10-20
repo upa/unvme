@@ -30,10 +30,14 @@ excmd() {
 for d in $*; do
     excmd unvme-setup bind $d
     excmd unvme/unvme_info $d
+    excmd unvme/unvme_get_features $d
     excmd unvme/unvme_sim_test $d
     excmd unvme/unvme_api_test $d
     excmd unvme/unvme_mts_test $d
     excmd unvme/unvme_lat_test $d
+
+    echo -e "\n\$ python ${PDIR}/python/unvme_wr_ex.py $d ($(date))"
+    python ${PDIR}/python/unvme_wr_ex.py $d
 done
 
 if [ $# -gt 1 ]; then

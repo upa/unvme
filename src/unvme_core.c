@@ -117,8 +117,8 @@ static int unvme_check_completion(unvme_queue_t* q, int timeout, u32* cqe_cs)
     do {
         cid = nvme_check_completion(q->nvmeq, &err, cqe_cs);
         if (cid >= 0 || timeout == 0) break;
-        if (endtsc == 0) endtsc = rdtsc() + timeout * q->nvmeq->dev->rdtsec;
-        else sched_yield();
+        if (endtsc) sched_yield();
+        else endtsc = rdtsc() + timeout * q->nvmeq->dev->rdtsec;
     } while (rdtsc() < endtsc);
     if (cid < 0) return cid;
 
@@ -197,7 +197,7 @@ static u16 unvme_get_cid(unvme_desc_t* desc)
  * @param   bufsz       buffer size
  * @return  DMA address or -1L if error.
  */
-static inline u64 unvme_map_dma(const unvme_ns_t* ns, void* buf, u64 bufsz)
+static u64 unvme_map_dma(const unvme_ns_t* ns, void* buf, u64 bufsz)
 {
     unvme_device_t* dev = ((unvme_session_t*)ns->ses)->dev;
 #ifdef UNVME_IDENTITY_MAP_DMA
@@ -238,10 +238,10 @@ static inline u64 unvme_map_dma(const unvme_ns_t* ns, void* buf, u64 bufsz)
  * @param   bufsz       buffer size
  * @param   prp1        returned prp1 value
  * @param   prp2        returned prp2 value
- * @return  DMA address or -1 if error.
+ * @return  0 if ok else -1 if buffer address error.
  */
-static inline int unvme_map_prps(const unvme_ns_t* ns, unvme_queue_t* q, int cid,
-                                 void* buf, u64 bufsz, u64* prp1, u64* prp2)
+static int unvme_map_prps(const unvme_ns_t* ns, unvme_queue_t* q, int cid,
+                          void* buf, u64 bufsz, u64* prp1, u64* prp2)
 {
     u64 addr = unvme_map_dma(ns, buf, bufsz);
     if (addr == -1L) return -1;

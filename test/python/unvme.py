@@ -24,12 +24,12 @@ class unvme_ns(ctypes.Structure):
         ("maxbpio", c_uint16),      # max number of blocks per I/O
         ("maxppio", c_uint16),      # max number of pages per I/O
         ("maxiopq", c_uint16),      # max number of I/O submissions per queue
-        ("qcount", c_uint16),       # number of I/O queues
-        ("maxqcount", c_uint16),    # max number of queues supported
-        ("qsize", c_uint16),        # I/O queue size
-        ("maxqsize", c_uint16),     # max queue size supported
         ("nscount", c_uint16),      # number of namespaces available
-        ("ses", POINTER(c_uint32))  # associated session
+        ("qcount", c_uint32),       # number of I/O queues
+        ("maxqcount", c_uint32),    # max number of queues supported
+        ("qsize", c_uint32),        # I/O queue size
+        ("maxqsize", c_uint32),     # max queue size supported
+        ("ses", POINTER(c_uint64))  # associated session
     ]
 
 # I/O descriptor structure
