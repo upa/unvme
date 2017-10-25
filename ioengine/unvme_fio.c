@@ -244,7 +244,6 @@ static int fio_unvme_getevents(struct thread_data *td, unsigned int min,
                 }
             }
         }
-        sched_yield();
     } while (rdtsc() < endtsc);
 
     FATAL("\nunvme_apoll timeout");
@@ -263,11 +262,6 @@ static int fio_unvme_getevents(struct thread_data *td, unsigned int min,
  */
 static int fio_unvme_queue(struct thread_data *td, struct io_u *io_u)
 {
-    /*
-     * Double sanity check to catch errant write on a readonly setup
-     */
-    fio_ro_check(td, io_u);
-
     void* buf = io_u->buf;
     u64 slba = io_u->offset >> unvme.ns->blockshift;
     int nlb = io_u->xfer_buflen >> unvme.ns->blockshift;
@@ -299,7 +293,7 @@ static int fio_unvme_queue(struct thread_data *td, struct io_u *io_u)
 // Note that the structure is exported, so that fio can get it via
 // dlsym(..., "ioengine");
 struct ioengine_ops ioengine = {
-    .name               = "unvme_fio",
+    .name               = "unvme",
     .version            = FIO_IOOPS_VERSION,
     .get_file_size      = fio_unvme_get_file_size,
     .init               = fio_unvme_init,

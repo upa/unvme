@@ -13,6 +13,7 @@ cd $(dirname $0)
 : ${OUTDIR=${PWD}/out}
 
 FIOTEXT="[global]
+norandommap=1
 thread=1
 group_reporting=1
 direct=1
@@ -31,8 +32,8 @@ iodepth=IODEPTH"
 
 : ${FIODIR=$(grep '^FIODIR' ../Makefile.def | sed 's/.*=\s*//')}
 : ${RW="randwrite randread"}
-: ${NUMJOBS="01 04 08 16"}
-: ${IODEPTH="0001 0004 0008 0016"}
+: ${NUMJOBS="01 04 08"}
+: ${IODEPTH="01 04 08 16 32"}
 : ${RAMPTIME=60}
 : ${RUNTIME=120}
 : ${BLOCKSIZE=4096}
@@ -67,7 +68,7 @@ for i in $@; do
             echo "Device ${pcidev} is not uNVMe enabled"
             exit 1
         fi
-        [ -z "${IOENGINE}" ] && IOENGINE=../ioengine/unvme_fio
+        [ -z "${IOENGINE}" ] && IOENGINE=$(readlink -f ../ioengine/unvme_fio)
         FILENAME=$(echo $i | tr :/ .)
         DRIVER="unvme"
         [ -n "$(pgrep unvmed)" ] && DRIVER="unvmed"
