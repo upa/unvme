@@ -110,9 +110,9 @@ typedef struct _unvme_queue {
     int                     desccount;  ///< number of pending descriptors
     int                     masksize;   ///< bit mask size to allocate
     u64*                    cidmask;    ///< cid pending bit mask
-    unvme_desc_t*           desclist;   ///< use descriptor list
+    unvme_desc_t*           desclist;   ///< used descriptor list
     unvme_desc_t*           descfree;   ///< free descriptor list
-    unvme_desc_t*           descnext;   ///< next pending descriptor to process
+    unvme_desc_t*           descpend;   ///< pending descriptor list
 } unvme_queue_t;
 
 /// Device context

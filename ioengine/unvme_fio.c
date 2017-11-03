@@ -12,42 +12,23 @@
 #include "fio.h"
 #include "optgroup.h"       // since fio 2.4
 
-#define TDEBUG(fmt, arg...) //printf("#%s.%d " fmt "\n", __func__, td->thread_number, ##arg)
+#define TDEBUG(fmt, arg...) //fprintf(stderr, "#%s.%d " fmt "\n", __func__, td->thread_number, ##arg)
 #define FATAL(fmt, arg...)  do { warnx(fmt, ##arg); abort(); } while (0)
 
-typedef struct {
-    struct io_u**       iocq;
-    int                 head;
-    int                 tail;
-} unvme_data_t;
-
+/// Context used for thread initialization
 typedef struct {
     pthread_mutex_t     mutex;
     const unvme_ns_t*   ns;
     int                 ncpus;
-    u64                 rdtsc_timeout;
 } unvme_context_t;
+
+/// Thread IO completion queue
+typedef struct io_u     *unvme_iocq_t;
 
 
 // Static variables
 static unvme_context_t  unvme = { .mutex = PTHREAD_MUTEX_INITIALIZER };
 
-
-/**
- * Read tsc.
- */
-static inline uint64_t rdtsc(void)
-{
-    union {
-        uint64_t val;
-        struct {
-            uint32_t lo;
-            uint32_t hi;
-        };
-    } tsc;
-    asm volatile ("rdtsc" : "=a" (tsc.lo), "=d" (tsc.hi));
-    return tsc.val;
-}
 
 /*
  * Clean up UNVMe upon exit.
@@ -78,10 +59,6 @@ static int do_unvme_init(struct thread_data *td)
             FATAL("unvme_open %s failed", pciname);
         if (td->o.iodepth >= unvme.ns->qsize)
             FATAL("iodepth %d greater than queue size", td->o.iodepth);
-
-        uint64_t tsc = rdtsc();
-        usleep(10000);
-        unvme.rdtsc_timeout = (rdtsc() - tsc) * 100 * 300; // 300 secs timeout
 
         unvme.ncpus = sysconf(_SC_NPROCESSORS_ONLN);
         printf("unvme_open %s q=%dx%d ncpus=%d\n",
@@ -125,16 +102,9 @@ static int fio_unvme_get_file_size(struct thread_data *td, struct fio_file *f)
  */
 static int fio_unvme_init(struct thread_data *td)
 {
-    unvme_data_t* udata = calloc(1, sizeof(unvme_data_t));
-    if (!udata) return 1;
-
-    udata->iocq = calloc(td->o.iodepth + 1, sizeof(void*));
-    if (!udata->iocq) {
-        free (udata);
-        return 1;
-    }
-
-    td->io_ops_data = udata;
+    unvme_iocq_t* iocq = calloc(td->o.iodepth, sizeof(void*));
+    if (!iocq) return 1;
+    td->io_ops_data = iocq;
     return 0;
 }
 
@@ -145,11 +115,8 @@ static int fio_unvme_init(struct thread_data *td)
  */
 static void fio_unvme_cleanup(struct thread_data *td)
 {
-    unvme_data_t* udata = td->io_ops_data;
-    if (udata) {
-        if (udata->iocq) free(udata->iocq);
-        free(udata);
-    }
+    if (td->io_ops_data) free(td->io_ops_data);
+    td->io_ops_data = NULL;
 }
 
 /*
@@ -201,15 +168,9 @@ static void fio_unvme_iomem_free(struct thread_data *td)
  */
 static struct io_u* fio_unvme_event(struct thread_data *td, int event)
 {
-    unvme_data_t* udata = td->io_ops_data;
-    struct io_u* io_u = NULL;
-
-    if (udata->head != udata->tail) {
-        io_u = udata->iocq[udata->head];
-        TDEBUG("GET.%d %p", udata->head, io_u->buf);
-        if (++udata->head > td->o.iodepth) udata->head = 0;
-    }
-    return io_u;
+    unvme_iocq_t* iocq = td->io_ops_data;
+    TDEBUG("GET.%d %p", event, iocq[event]->buf);
+    return iocq[event];
 }
 
 /*
@@ -223,30 +184,27 @@ static int fio_unvme_getevents(struct thread_data *td, unsigned int min,
 {
     int i;
     struct io_u* io_u;
-    int events = 0;
-    u64 endtsc = 0;
-    unvme_data_t* udata = td->io_ops_data;
+    unvme_iocq_t* iocq = td->io_ops_data;
+    int ec = 0;
 
-    do {
+    for (;;) {
         io_u_qiter(&td->io_u_all, io_u, i) {
             if (io_u->engine_data) {
                 int stat = unvme_apoll(io_u->engine_data, 0);
                 if (stat == 0) {
                     io_u->engine_data = NULL;
-                    udata->iocq[udata->tail] = io_u;
-                    TDEBUG("PUT.%d %p", udata->tail, io_u->buf);
-                    if (++udata->tail > td->o.iodepth) udata->tail = 0;
-                    if (++events >= min) return events;
+                    TDEBUG("PUT.%d %p (%d %d)", ec, io_u->buf, min, max);
+                    iocq[ec++] = io_u;
+                    if (ec == max) return ec;
                 } else if (stat == -1) {
-                    if (endtsc == 0) endtsc = rdtsc() + unvme.rdtsc_timeout;
+                    if (ec >= min) return ec;
                 } else {
                     FATAL("\nunvme_apoll return %#x", stat);
                 }
             }
         }
-    } while (rdtsc() < endtsc);
+    }
 
-    FATAL("\nunvme_apoll timeout");
     return 0;
 }
 

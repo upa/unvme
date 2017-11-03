@@ -59,25 +59,26 @@ static unvme_lock_t     unvme_lock = 0;                     ///< session lock
  */
 static unvme_desc_t* unvme_desc_get(unvme_queue_t* q)
 {
+    static u32 id = 0;
     unvme_desc_t* desc;
 
     if (q->descfree) {
         desc = q->descfree;
         LIST_DEL(q->descfree, desc);
+
+        desc->error = 0;
+        desc->cidcount = 0;
+        u64* cidmask = desc->cidmask;
+        int i = q->masksize >> 3;
+        while (i--) *cidmask++ = 0;
     } else {
         desc = zalloc(sizeof(unvme_desc_t) + q->masksize);
+        desc->id = ++id;
         desc->q = q;
     }
     LIST_ADD(q->desclist, desc);
-
-    if (desc == desc->next) {
-        desc->id = 1;
-        q->descnext = desc;
-    } else {
-        desc->id = desc->prev->id + 1;
-    }
+    if (desc == desc->next) q->descpend = desc; // head of pending list
     q->desccount++;
-
     return desc;
 }
 
@@ -89,16 +90,14 @@ static void unvme_desc_put(unvme_desc_t* desc)
 {
     unvme_queue_t* q = desc->q;
 
-    if (q->descnext == desc) {
-        if (desc != desc->next) q->descnext = desc->next;
-        else q->descnext = NULL;
+    // check to change the pending head or clear the list
+    if (desc == q->descpend) {
+        if (desc != desc->next) q->descpend = desc->next;
+        else q->descpend = NULL;
     }
 
     LIST_DEL(q->desclist, desc);
-    memset(desc, 0, sizeof(unvme_desc_t) + q->masksize);
-    desc->q = q;
     LIST_ADD(q->descfree, desc);
-
     q->desccount--;
 }
 
@@ -116,19 +115,20 @@ static int unvme_check_completion(unvme_queue_t* q, int timeout, u32* cqe_cs)
     u64 endtsc = 0;
     do {
         cid = nvme_check_completion(q->nvmeq, &err, cqe_cs);
-        if (cid >= 0 || timeout == 0) break;
+        if (timeout == 0 || cid >= 0) break;
         if (endtsc) sched_yield();
         else endtsc = rdtsc() + timeout * q->nvmeq->dev->rdtsec;
     } while (rdtsc() < endtsc);
+
     if (cid < 0) return cid;
 
     // find the pending cid in the descriptor list to clear it
-    unvme_desc_t* desc = q->descnext;
+    unvme_desc_t* desc = q->descpend;
     int b = cid >> 6;
     u64 mask = (u64)1 << (cid & 63);
     while ((desc->cidmask[b] & mask) == 0) {
         desc = desc->next;
-        if (desc == q->descnext)
+        if (desc == q->descpend)
             FATAL("pending cid %d not found", cid);
     }
     if (err) desc->error = err;
@@ -142,11 +142,11 @@ static int unvme_check_completion(unvme_queue_t* q, int timeout, u32* cqe_cs)
 
     // check to advance next pending descriptor
     if (q->cidcount) {
-        while (q->descnext->cidcount == 0) q->descnext = q->descnext->next;
+        while (q->descpend->cidcount == 0) q->descpend = q->descpend->next;
     }
     PDEBUG("# c q%d={%d %d %#lx} d={%d %d %#lx} @%d",
            q->nvmeq->id, cid, q->cidcount, *q->cidmask,
-           desc->id, desc->cidcount, *desc->cidmask, q->descnext->id);
+           desc->id, desc->cidcount, *desc->cidmask, q->descpend->id);
     return err;
 }
 
@@ -160,32 +160,31 @@ static u16 unvme_get_cid(unvme_desc_t* desc)
     u16 cid;
     unvme_queue_t* q = desc->q;
     int qsize = q->size;
-    if ((q->cidcount + 1) < qsize) {
-        cid = q->cid;
-        while (q->cidmask[cid >> 6] & ((u64)1 << (cid & 63))) {
-            if (++cid >= qsize) cid = 0;
+
+    // if submission queue is full then process completion first
+    if ((q->cidcount + 1) == qsize) {
+        int err = unvme_check_completion(q, UNVME_TIMEOUT, NULL);
+        if (err) {
+            if (err == -1) FATAL("q%d timeout", q->nvmeq->id);
+            else ERROR("q%d error %#x", q->nvmeq->id, err);
         }
-        q->cid = cid;
-    } else {
-        // if submission queue is full then process pending in descriptor
-        unvme_desc_t* desc = q->descnext;
-        while (desc->cidcount) {
-            int err = unvme_check_completion(q, UNVME_TIMEOUT, NULL);
-            if (err) {
-                if (err == -1) FATAL("q%d timeout", q->nvmeq->id);
-                else ERROR("q%d error %#x", q->nvmeq->id, err);
-            }
-        }
-        cid = q->cid;
+    }
+
+    // get a free cid
+    cid = q->cid;
+    while (q->cidmask[cid >> 6] & ((u64)1L << (cid & 63))) {
+        if (++cid >= qsize) cid = 0;
     }
 
     // set cid bit used
     int b = cid >> 6;
     u64 mask = (u64)1 << (cid & 63);
-    q->cidmask[b] |= mask;
-    q->cidcount++;
     desc->cidmask[b] |= mask;
     desc->cidcount++;
+    q->cidmask[b] |= mask;
+    q->cidcount++;
+    q->cid = cid;
+    if (++q->cid >= qsize) q->cid = 0;
 
     return cid;
 }
@@ -654,7 +653,7 @@ int unvme_do_poll(unvme_desc_t* desc, int timeout, u32* cqe_cs)
     while (desc->cidcount) {
         if ((err = unvme_check_completion(desc->q, timeout, cqe_cs)) != 0) break;
     }
-    if (desc->id != 0 && desc->cidcount == 0) unvme_desc_put(desc);
+    if (desc->cidcount == 0) unvme_desc_put(desc);
     PDEBUG("# q%d +%d", desc->q->nvmeq->id, desc->q->desccount);
 
     return err;
