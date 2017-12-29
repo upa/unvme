@@ -42,7 +42,7 @@ UNVME_SRC = ../src
 
 CPPFLAGS += -I$(UNVME_SRC) -I$(FIODIR)
 LDFLAGS += -shared -rdynamic
-LDLIBS += -lpthread -lrt
+LDLIBS += -lrt
 
 OBJS = $(addsuffix .o, $(TARGET))
 
@@ -50,7 +50,7 @@ all: $(TARGET)
 
 $(TARGET): $(UNVME_SRC)/libunvme.a
 
-lint: CFLAGS = -Wall -D_FORTIFY_SOURCE=2 -DUNVME_DEBUG -O3
+lint: CFLAGS = -Wall -O3 -D_FORTIFY_SOURCE=2 -DUNVME_DEBUG
 lint: clean $(OBJS)
 	@$(RM) *.o
 

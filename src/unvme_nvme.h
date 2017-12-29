@@ -164,6 +164,31 @@ typedef union _nvme_controller_status {
     };
 } nvme_controller_status_t;
 
+/// Controller memory buffer location register
+typedef union _nvme_cmbloc {
+    u32                 val;            ///< whole value
+    struct {
+        u32             bir     : 3;    ///< base indicator register
+        u32             rsvd    : 9;    ///< reserved
+        u32             ofst    : 20;   ///< offset (in cmbsz units)
+    };
+} nvme_cmbloc_t;
+
+/// Controller memory buffer size register
+typedef union _nvme_cmbsz {
+    u32                 val;            ///< whole value
+    struct {
+        u32             sqs     : 1;    ///< submission queue support
+        u32             cqs     : 1;    ///< completion queue support
+        u32             lists   : 1;    ///< PRP SGL list support
+        u32             rds     : 1;    ///< read data support
+        u32             wds     : 1;    ///< write data support
+        u32             rsvd    : 3;    ///< reserved
+        u32             szu     : 4;    ///< size units (0=4K,1=64K,2=1M,3=16M,4=256M,5=4G,6=64G)
+        u32             sz      : 20;   ///< size (in cmbsz units)
+    };
+} nvme_cmbsz_t;
+
 /// Controller register (bar 0)
 typedef struct _nvme_controller_reg {
     nvme_controller_cap_t   cap;        ///< controller capabilities
@@ -177,8 +202,8 @@ typedef struct _nvme_controller_reg {
     nvme_adminq_attr_t      aqa;        ///< admin queue attributes
     u64                     asq;        ///< admin submission queue base address
     u64                     acq;        ///< admin completion queue base address
-    u32                     cmbloc;     ///< controller memory buffer location
-    u32                     cmbsz;      ///< controller memory buffer size
+    nvme_cmbloc_t           cmbloc;     ///< controller memory buffer location
+    nvme_cmbsz_t            cmbsz;      ///< controller memory buffer size
     u32                     rcss[1008]; ///< reserved and command set specific
     u32                     sq0tdbl[1024]; ///< sq0 tail doorbell at 0x1000
 } nvme_controller_reg_t;
@@ -545,6 +570,8 @@ typedef struct _nvme_queue {
 typedef struct _nvme_device {
     nvme_controller_reg_t*  reg;        ///< register address map
     nvme_queue_t            adminq;     ///< admin queue reference
+    nvme_cmbloc_t           cmbloc;     ///< CMB location
+    nvme_cmbsz_t            cmbsz;      ///< CMB size
     u64                     rdtsec;     ///< rdtsc per second
     u32                     maxqcount;  ///< max queue count
     u32                     maxqsize;   ///< max queue size
@@ -583,3 +610,4 @@ int nvme_check_completion(nvme_queue_t* q, int* stat, u32* cqe_cs);
 int nvme_wait_completion(nvme_queue_t* q, int cid, int timeout);
 
 #endif  // _UNVME_NVME_H
+

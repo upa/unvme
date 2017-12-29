@@ -65,7 +65,6 @@ static inline uint64_t rdtsc(void)
  */
 static inline uint64_t rdtsc_elapse(uint64_t tsc) {
     int64_t et;
-
     do {
         et = rdtsc() - tsc;
     } while (et <= 0);
@@ -79,9 +78,15 @@ static inline uint64_t rdtsc_second()
 {
     static uint64_t tsc_ps = 0;
     if (!tsc_ps) {
-        uint64_t tsc = rdtsc();
-        usleep(10000);
-        tsc_ps = (rdtsc() - tsc) * 100;
+        uint64_t t0 = rdtsc();
+        usleep(1000);
+        uint64_t t1 = rdtsc();
+        usleep(1000);
+        uint64_t t2 = rdtsc();
+        t2 -= t1;
+        t1 -= t0;
+        if (t2 > t1) t2 = t1;
+        tsc_ps = t2 * 1000;
     }
     return tsc_ps;
 }

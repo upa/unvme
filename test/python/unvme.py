@@ -4,7 +4,7 @@ import os, sys, ctypes
 from ctypes import *
 
 # Namespace attributes structure
-class unvme_ns(ctypes.Structure):
+class unvme_ns_t(ctypes.Structure):
     _fields_ = [
         ("pci", c_uint32),          # PCI device id
         ("id", c_uint16),           # namespace id
@@ -29,18 +29,18 @@ class unvme_ns(ctypes.Structure):
         ("maxqcount", c_uint32),    # max number of queues supported
         ("qsize", c_uint32),        # I/O queue size
         ("maxqsize", c_uint32),     # max queue size supported
-        ("ses", POINTER(c_uint64))  # associated session
+        ("ses", c_void_p)           # associated session
     ]
 
 # I/O descriptor structure
-class unvme_iod(ctypes.Structure):
-    _fields = [
-        ("buf", POINTER(c_uint32)), # data buffer (submitted)
+class unvme_iod_t(ctypes.Structure):
+    _fields_ = [
+        ("buf", c_void_p),          # data buffer (submitted)
         ("slba", c_uint64),         # starting lba (submitted)
         ("nlb", c_uint32),          # number of blocks (submitted)
         ("qid", c_uint32),          # queue id (submitted)
         ("opc", c_uint32),          # op code
-        ("id", c_uint32),           # descriptor id
+        ("id", c_uint32)            # descriptor id
     ]
 
 # Load libunvme
@@ -52,67 +52,75 @@ libunvme = cdll.LoadLibrary(libso)
 
 # UNVMe library functions
 def unvme_open(pci):
-    open = libunvme.unvme_open
-    open.restype = POINTER(unvme_ns)
-    return open(pci)
+    fn = libunvme.unvme_open
+    fn.restype = POINTER(unvme_ns_t)
+    return fn(pci)
 
 def unvme_close(ns):
-    close = libunvme.unvme_close
-    close.argtypes = [POINTER(unvme_ns)]
-    return close(ns)
+    fn = libunvme.unvme_close
+    fn.argtypes = [POINTER(unvme_ns_t)]
+    fn.restype = c_int
+    return fn(ns)
 
 def unvme_alloc(ns, size):
-    alloc = libunvme.unvme_alloc
-    alloc.argtypes = [POINTER(unvme_ns), c_uint64]
-    alloc.restype = POINTER(c_uint64)
-    return alloc(ns, size)
+    fn = libunvme.unvme_alloc
+    fn.argtypes = [POINTER(unvme_ns_t), c_uint64]
+    fn.restype = c_void_p
+    return fn(ns, size)
 
 def unvme_free(ns, buf):
-    free = libunvme.unvme_free
-    free.argtypes = [POINTER(unvme_ns), POINTER(c_uint64)]
-    return free(ns, buf)
+    fn = libunvme.unvme_free
+    fn.argtypes = [POINTER(unvme_ns_t), c_void_p]
+    fn.restype = c_int
+    return fn(ns, buf)
 
 def unvme_write(ns, qid, buf, slba, nlb):
-    write = libunvme.unvme_write
-    write.argtypes = [POINTER(unvme_ns), c_int, POINTER(c_uint64), c_uint64, c_uint32]
-    return write(ns, qid, buf, slba, nlb)
+    fn = libunvme.unvme_write
+    fn.argtypes = [POINTER(unvme_ns_t), c_int, c_void_p, c_uint64, c_uint32]
+    fn.restype = c_int
+    return fn(ns, qid, buf, slba, nlb)
 
 def unvme_read(ns, qid, buf, slba, nlb):
-    read = libunvme.unvme_read
-    read.argtypes = [POINTER(unvme_ns), c_int, POINTER(c_uint64), c_uint64, c_uint32]
-    return read(ns, qid, buf, slba, nlb)
+    fn = libunvme.unvme_read
+    fn.argtypes = [POINTER(unvme_ns_t), c_int, c_void_p, c_uint64, c_uint32]
+    fn.restype = c_int
+    return fn(ns, qid, buf, slba, nlb)
 
 def unvme_cmd(ns, qid, opc, nsid, buf, bufsz, cdw10_15, cqe_cs):
-    cmd = libunvme.unvme_cmd
-    cmd.argtypes = [POINTER(unvme_ns), c_int, c_int, c_int, POINTER(c_uint64), c_uint64, POINTER(c_uint32), POINTER(c_uint32)]
-    return cmd(ns, qid, opc, nsid, buf, bufsz, cdw10_15, cqe_cs)
+    fn = libunvme.unvme_cmd
+    fn.argtypes = [POINTER(unvme_ns_t), c_int, c_int, c_int, c_void_p, c_uint64, POINTER(c_uint32), POINTER(c_uint32)]
+    fn.restype = c_int
+    return fn(ns, qid, opc, nsid, buf, bufsz, cdw10_15, cqe_cs)
 
 def unvme_awrite(ns, qid, buf, slba, nlb):
-    awrite = libunvme.unvme_awrite
-    awrite.argtypes = [POINTER(unvme_ns), c_int, POINTER(c_uint64), c_uint64, c_uint32]
-    awrite.restype = POINTER(unvme_iod)
-    return awrite(ns, qid, buf, slba, nlb)
+    fn = libunvme.unvme_awrite
+    fn.argtypes = [POINTER(unvme_ns_t), c_int, c_void_p, c_uint64, c_uint32]
+    fn.restype = POINTER(unvme_iod_t)
+    return fn(ns, qid, buf, slba, nlb)
 
 def unvme_aread(ns, qid, buf, slba, nlb):
-    aread = libunvme.unvme_aread
-    aread.argtypes = [POINTER(unvme_ns), c_int, POINTER(c_uint64), c_uint64, c_uint32]
-    aread.restype = POINTER(unvme_iod)
-    return aread(ns, qid, buf, slba, nlb)
+    fn = libunvme.unvme_aread
+    fn.argtypes = [POINTER(unvme_ns_t), c_int, c_void_p, c_uint64, c_uint32]
+    fn.restype = POINTER(unvme_iod_t)
+    return fn(ns, qid, buf, slba, nlb)
 
 def unvme_acmd(ns, qid, opc, nsid, buf, bufsz, cdw10_15):
-    acmd = libunvme.unvme_acmd
-    acmd.argtypes = [POINTER(unvme_ns), c_int, c_int, c_int, POINTER(c_uint64), c_uint64, POINTER(c_uint32)]
-    return acmd(ns, qid, opc, nsid, buf, bufsz, cdw10_15)
+    fn = libunvme.unvme_acmd
+    fn.argtypes = [POINTER(unvme_ns_t), c_int, c_int, c_int, c_void_p, c_uint64, POINTER(c_uint32)]
+    fn.restype = POINTER(unvme_iod_t)
+    return fn(ns, qid, opc, nsid, buf, bufsz, cdw10_15)
 
 def unvme_apoll(iod, timeout):
-    apoll = libunvme.unvme_apoll
-    apoll.argtypes = [POINTER(unvme_iod), c_int]
-    return apoll(iod, timeout)
+    fn = libunvme.unvme_apoll
+    fn.argtypes = [POINTER(unvme_iod_t), c_int]
+    fn.restype = c_int
+    return fn(iod, timeout)
 
 def unvme_apoll_cs(iod, timeout, cqe_cs):
-    apoll = libunvme.unvme_apoll_cs
-    apoll.argtypes = [POINTER(unvme_iod), c_int, POINTER(c_uint32)]
-    return apoll(iod, timeout, cqe_cs)
+    fn = libunvme.unvme_apoll_cs
+    fn.argtypes = [POINTER(unvme_iod_t), c_int, POINTER(c_uint32)]
+    fn.restype = c_int
+    return fn(iod, timeout, cqe_cs)
 
 
 # UNVMe class

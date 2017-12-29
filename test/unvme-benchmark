@@ -32,19 +32,18 @@ iodepth=IODEPTH"
 
 : ${FIODIR=$(grep '^FIODIR' ../Makefile.def | sed 's/.*=\s*//')}
 : ${RW="randwrite randread"}
-: ${NUMJOBS="01 04 08"}
-: ${IODEPTH="01 04 08 16 32"}
+: ${NUMJOBS="01 08 16"}
+: ${IODEPTH="01 08 16 32"}
 : ${RAMPTIME=60}
 : ${RUNTIME=120}
 : ${BLOCKSIZE=4096}
 : ${IOENGINE=""}
 
+FIO=${FIODIR}/fio
+
 [ $# -lt 1 ] && echo ${USAGE} && exit 1
-
 [ ${EUID} -ne 0 ] && echo "ERROR: ${PROG} must be run as root" && exit 1
-
-FIO=fio
-[ -n "${FIODIR}" ] && FIO=${FIODIR}/fio
+[ ! -x "${FIO}" ] && echo "ERROR: Missing ${FIO}" && exit 1
 
 for i in $@; do
     case $i in
@@ -53,8 +52,8 @@ for i in $@; do
             echo "Unknown NVMe device: $i"
             exit 1
         fi
-        [ -z "${IOENGINE}" ] && IOENGINE=libaio
         FILENAME=$i
+        [ -z "${IOENGINE}" ] && IOENGINE=libaio
         DRIVER="nvme"
         ;;
 
@@ -68,8 +67,8 @@ for i in $@; do
             echo "Device ${pcidev} is not uNVMe enabled"
             exit 1
         fi
-        [ -z "${IOENGINE}" ] && IOENGINE=$(readlink -f ../ioengine/unvme_fio)
         FILENAME=$(echo $i | tr :/ .)
+        [ -z "${IOENGINE}" ] && IOENGINE=$(readlink -f ../ioengine/unvme_fio)
         DRIVER="unvme"
         [ -n "$(pgrep unvmed)" ] && DRIVER="unvmed"
         ;;

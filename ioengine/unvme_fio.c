@@ -12,8 +12,10 @@
 #include "fio.h"
 #include "optgroup.h"       // since fio 2.4
 
+
 #define TDEBUG(fmt, arg...) //fprintf(stderr, "#%s.%d " fmt "\n", __func__, td->thread_number, ##arg)
 #define FATAL(fmt, arg...)  do { warnx(fmt, ##arg); abort(); } while (0)
+
 
 /// Context used for thread initialization
 typedef struct {
@@ -42,7 +44,7 @@ static void do_unvme_cleanup(void)
 /*
  * Initialize UNVMe once.
  */
-static int do_unvme_init(struct thread_data *td)
+static void do_unvme_init(struct thread_data *td)
 {
     TDEBUG("device=%s numjobs=%d iodepth=%d", td->o.filename, td->o.numjobs, td->o.iodepth);
 
@@ -74,25 +76,6 @@ static int do_unvme_init(struct thread_data *td)
     }
 
     pthread_mutex_unlock(&unvme.mutex);
-    return 0;
-}
-
-/*
- * The ->get_file_size() is called once for every job (i.e. numjobs)
- * before all other functions.  This is called after ->setup() but
- * is simpler to initialize here since we only care about the device name
- * (given as file_name) and just have to specify the device size.
- */
-static int fio_unvme_get_file_size(struct thread_data *td, struct fio_file *f)
-{
-    TDEBUG("file=%s", f->file_name);
-    if (!fio_file_size_known(f)) {
-        do_unvme_init(td);
-        f->filetype = FIO_TYPE_CHAR;
-        f->real_file_size = unvme.ns->blockcount * unvme.ns->blocksize;
-        fio_file_set_size_known(f);
-    }
-    return 0;
 }
 
 /*
@@ -208,6 +191,9 @@ static int fio_unvme_getevents(struct thread_data *td, unsigned int min,
     return 0;
 }
 
+
+#ifndef _UNVME_MMCC_H
+
 /*
  * The ->queue() hook is responsible for initiating io on the io_u
  * being passed in. If the io engine is a synchronous one, io may complete
@@ -220,10 +206,10 @@ static int fio_unvme_getevents(struct thread_data *td, unsigned int min,
  */
 static int fio_unvme_queue(struct thread_data *td, struct io_u *io_u)
 {
+    int q = td->thread_number - 1;
     void* buf = io_u->buf;
     u64 slba = io_u->offset >> unvme.ns->blockshift;
     int nlb = io_u->xfer_buflen >> unvme.ns->blockshift;
-    int q = td->thread_number - 1;
 
     switch (io_u->ddir) {
     case DDIR_READ:
@@ -247,6 +233,24 @@ static int fio_unvme_queue(struct thread_data *td, struct io_u *io_u)
     return FIO_Q_COMPLETED;
 }
 
+/*
+ * The ->get_file_size() is called once for every job (i.e. numjobs)
+ * before all other functions.  This is called after ->setup() but
+ * is simpler to initialize here since we only care about the device name
+ * (given as file_name) and just have to specify the device size.
+ */
+static int fio_unvme_get_file_size(struct thread_data *td, struct fio_file *f)
+{
+    TDEBUG("file=%s", f->file_name);
+    if (!fio_file_size_known(f)) {
+        do_unvme_init(td);
+        f->filetype = FIO_TYPE_CHAR;
+        f->real_file_size = unvme.ns->blockcount * unvme.ns->blocksize;
+        fio_file_set_size_known(f);
+    }
+    return 0;
+}
+
 
 // Note that the structure is exported, so that fio can get it via
 // dlsym(..., "ioengine");
@@ -265,4 +269,6 @@ struct ioengine_ops ioengine = {
     .event              = fio_unvme_event,
     .flags              = FIO_NOEXTEND | FIO_RAWIO,
 };
+
+#endif // _UNVME_MMCC_H
 

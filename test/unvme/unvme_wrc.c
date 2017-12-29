@@ -265,9 +265,9 @@ int main(int argc, char** argv)
         if (stat) {
             // terminate on error
             if (stat != -1)
-                errx(1, "unvme_apoll error %#x", stat);
+                errx(1, "unvme_apoll error=%#x slba=%#lx nlb=%#x", stat, iod->slba, iod->nlb);
             else if ((time(0) - tio) > UNVME_TIMEOUT)
-                errx(1, "unvme_apoll timeout");
+                errx(1, "unvme_apoll timeout slba=%#lx nlb=%#x", iod->slba, iod->nlb);
             // if no completion go on to next queue
             if (++q >= qcount) q = 0;
             continue;

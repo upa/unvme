@@ -1,20 +1,10 @@
+#!/bin/python
 # Example to write-read-verify synchronously and asynchronously.
 #
 
 from __future__ import print_function
-import sys
-import argparse
-import random
-import time
-import unvme
-
-
-# IO buffer class.
-#class ExBuf(object):
-#    def __init__(self, id, buf):
-#        self.id = id
-#        self.buf = buf
-
+import os, sys, argparse, random, time, ctypes, unvme
+from ctypes import *
 
 # Write-Read-Verify example test class.
 class WRTest:
@@ -28,8 +18,10 @@ class WRTest:
         self.wbuf = []
         self.rbuf = []
         for i in range(ioc):
-            self.wbuf.append(self.unvme.alloc(maxnlb * self.ns.blocksize))
-            self.rbuf.append(self.unvme.alloc(maxnlb * self.ns.blocksize))
+            buf = cast(self.unvme.alloc(maxnlb * self.ns.blocksize), POINTER(c_uint64))
+            self.wbuf.append(buf)
+            buf = cast(self.unvme.alloc(maxnlb * self.ns.blocksize), POINTER(c_uint64))
+            self.rbuf.append(buf)
 
     def __del__(self):
         for i in range(0, self.ioc):
@@ -55,7 +47,7 @@ class WRTest:
             pat = (lba << 24) | b
             for w in range(self.wpb):
                 if buf[i] != pat:
-                    self.error("ERROR: data miscompare at lba %#lx" % lba)
+                    self.error('ERROR: data miscompare at lba %#lx' % lba)
                 i = i + 1
             lba = lba + 1
 
@@ -67,25 +59,25 @@ class WRTest:
         return q, lba, nlb
 
     def syncTest(self):
-        print("Sync test");
+        print('Sync test');
         for i in range(self.ioc):
             q, lba, nlb = self.pickqbc(i)
-            print("  write   q=%-3d lba=0x%-9lx nlb=%#x" % (q, lba, nlb))
+            print('  write   q=%-3d lba=0x%-9lx nlb=%#x' % (q, lba, nlb))
             self.fillBuffer(self.wbuf[i], lba, nlb)
             self.unvme.write(q, self.wbuf[i], lba, nlb)
 
         for i in range(self.ioc):
             q, lba, nlb = self.pickqbc(i)
-            print("  read    q=%-3d lba=0x%-9lx nlb=%#x" % (q, lba, nlb))
+            print('  read    q=%-3d lba=0x%-9lx nlb=%#x' % (q, lba, nlb))
             self.unvme.read(q, self.rbuf[i], lba, nlb)
             self.verifyBuffer(self.rbuf[i], lba, nlb)
 
     def asyncTest(self):
-        print("Async test");
+        print('Async test');
         wiod = []
         for i in range(self.ioc):
             q, lba, nlb = self.pickqbc(i)
-            print("  awrite  q=%-3d lba=0x%-9lx nlb=%#x" % (q, lba, nlb))
+            print('  awrite  q=%-3d lba=0x%-9lx nlb=%#x' % (q, lba, nlb))
             self.fillBuffer(self.wbuf[i], lba, nlb)
             iod = self.unvme.awrite(q, self.wbuf[i], lba, nlb)
             wiod.append(iod)
@@ -93,31 +85,31 @@ class WRTest:
         riod = []
         for i in range(self.ioc):
             q, lba, nlb = self.pickqbc(i)
-            print("  aread   q=%-3d lba=0x%-9lx nlb=%#x" % (q, lba, nlb))
+            print('  aread   q=%-3d lba=0x%-9lx nlb=%#x' % (q, lba, nlb))
             iod = self.unvme.aread(q, self.rbuf[i], lba, nlb)
             riod.append(iod)
 
         for i in range(self.ioc):
             q, lba, nlb = self.pickqbc(i)
-            print("  apoll   q=%-3d lba=0x%-9lx nlb=%#x" % (q, lba, nlb))
+            print('  apoll   q=%-3d lba=0x%-9lx nlb=%#x' % (q, lba, nlb))
             if self.unvme.apoll(wiod[i], 30) or self.unvme.apoll(riod[i], 30):
-                self.error("ERROR: apoll")
+                self.error('ERROR: apoll')
             self.verifyBuffer(self.rbuf[i], lba, nlb)
 
 
 # Main program.
-parser = argparse.ArgumentParser()
-parser.add_argument('--ioc', help="number of IOs per test", type=int, default=8)
-parser.add_argument('--nlb', help="max number of blocks per IO", type=int, default=65536)
-parser.add_argument('pci', help="PCI device name (as 0a:00.0[/1] format)")
+parser = argparse.ArgumentParser(description='RANDOM WRITE-READ TEST EXAMPLE', add_help=False)
+parser.add_argument('--ioc', help='number of IOs per test', type=int, default=8)
+parser.add_argument('--nlb', help='max number of blocks per IO', type=int, default=65536)
+parser.add_argument('pci', help='PCI device name (as 0a:00.0[/1] format)')
 if len(sys.argv) == 1:
     parser.print_help()
     sys.exit(1)
 opts = parser.parse_args()
 
-print("PYTHON RANDOM WRITE-READ EXAMPLE TEST BEGIN")
+print('PYTHON RANDOM WRITE-READ TEST EXAMPLE BEGIN')
 ex = WRTest(opts.pci, opts.ioc, opts.nlb)
 ex.syncTest()
 ex.asyncTest()
-print("PYTHON RANDOM WRITE-READ EXAMPLE TEST COMPLETE")
+print('PYTHON RANDOM WRITE-READ TEST EXAMPLE COMPLETE')
 

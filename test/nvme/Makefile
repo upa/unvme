@@ -36,7 +36,7 @@ TARGETS = nvme_identify nvme_get_log_page nvme_get_features nvme_set_features
 UNVME_SRC = ../../src
 
 CPPFLAGS += -I$(UNVME_SRC)
-LDLIBS += $(UNVME_SRC)/libunvme.a -lrt -lpthread
+LDLIBS += -lrt
 
 OBJS = $(addsuffix .o, $(TARGETS))
 
@@ -44,7 +44,7 @@ all: $(TARGETS)
 
 $(TARGETS): $(UNVME_SRC)/libunvme.a
 
-lint: CFLAGS = -Wall -D_FORTIFY_SOURCE=2 -DUNVME_DEBUG -O3
+lint: CFLAGS = -Wall -O3 -D_FORTIFY_SOURCE=2 -DUNVME_DEBUG
 lint: clean $(OBJS)
 	@$(RM) *.o
 

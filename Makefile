@@ -50,11 +50,8 @@ uninstall:
 	      $(INSTALLDIR)/lib/libunvme* \
 	      $(INSTALLDIR)/bin/unvme*
 
-lint:
-	@(for d in $(SUBDIRS); do $(MAKE) -C $$d lint; done)
-
-clean:
-	@(for d in $(SUBDIRS); do $(MAKE) -C $$d clean; done)
+clean lint:
+	@(for d in $(SUBDIRS); do $(MAKE) -C $$d $@; done)
 
 .PHONY: all install uninstall lint clean $(SUBDIRS)
 

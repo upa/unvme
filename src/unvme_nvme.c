@@ -174,10 +174,10 @@ int nvme_check_completion(nvme_queue_t* q, int* stat, u32* cqe_cs)
 #endif
 
     if (*stat == 0) {
-        DEBUG_FN("q=%d h=%d cid=%#x (C)", q->id, q->cq_head, cqe->cid);
+        DEBUG_FN("q=%d cq=%d sq=%d-%d cid=%#x (C)", q->id, q->cq_head, q->sq_head, q->sq_tail, cqe->cid);
     } else {
-        ERROR("q=%d cid=%#x stat=%#x (dnr=%d m=%d sct=%d sc=%#x) (C)",
-              q->id, cqe->cid, *stat, cqe->dnr, cqe->m, cqe->sct, cqe->sc);
+        ERROR("q=%d cq=%d sq=%d-%d cid=%#x stat=%#x (dnr=%d m=%d sct=%d sc=%#x) (C)",
+              q->id, q->cq_head, q->sq_head, q->sq_tail, cqe->cid, *stat, cqe->dnr, cqe->m, cqe->sct, cqe->sc);
     }
 
     return cqe->cid;
@@ -236,7 +236,7 @@ int nvme_acmd_identify(nvme_device_t* dev, int nsid, u64 prp1, u64 prp2)
     cmd->common.prp2 = prp2;
     cmd->cns = nsid == 0 ? 1 : 0;
 
-    DEBUG_FN("t=%d h=%d cid=%#x nsid=%d", adminq->sq_tail, adminq->sq_head, cid, nsid);
+    DEBUG_FN("sq=%d-%d cid=%#x nsid=%d", adminq->sq_head, adminq->sq_tail, cid, nsid);
     int err = nvme_submit_cmd(adminq);
     if (!err) err = nvme_wait_completion(adminq, cid, 30);
     return err;
@@ -269,7 +269,7 @@ int nvme_acmd_get_log_page(nvme_device_t* dev, int nsid,
     cmd->lid = lid;
     cmd->numd = numd;
 
-    DEBUG_FN("t=%d h=%d cid=%#x lid=%d", adminq->sq_tail, adminq->sq_head, cid, lid);
+    DEBUG_FN("sq=%d-%d cid=%#x lid=%d", adminq->sq_head, adminq->sq_tail, cid, lid);
     int err = nvme_submit_cmd(adminq);
     if (!err) err = nvme_wait_completion(adminq, cid, 30);
     return err;
@@ -302,7 +302,7 @@ int nvme_acmd_get_features(nvme_device_t* dev, int nsid,
     cmd->fid = fid;
     *res = -1;
 
-    DEBUG_FN("t=%d h=%d cid=%#x fid=%d", adminq->sq_tail, adminq->sq_head, cid, fid);
+    DEBUG_FN("sq=%d-%d cid=%#x fid=%d", adminq->sq_head, adminq->sq_tail, cid, fid);
     int err = nvme_submit_cmd(adminq);
     if (!err) err = nvme_wait_completion(adminq, cid, 30);
     if (!err) *res = adminq->cq[cid].cs;
@@ -365,7 +365,7 @@ int nvme_acmd_create_cq(nvme_queue_t* ioq, u64 prp)
     cmd->qid = ioq->id;
     cmd->qsize = ioq->size - 1;
 
-    DEBUG_FN("t=%d h=%d cid=%#x cq=%d qs=%d", adminq->sq_tail, adminq->sq_head, cid, ioq->id, ioq->size);
+    DEBUG_FN("sq=%d-%d cid=%#x cq=%d qs=%d", adminq->sq_head, adminq->sq_tail, cid, ioq->id, ioq->size);
     int err = nvme_submit_cmd(adminq);
     if (!err) err = nvme_wait_completion(adminq, cid, 30);
     return err;
@@ -394,7 +394,7 @@ int nvme_acmd_create_sq(nvme_queue_t* ioq, u64 prp)
     cmd->cqid = ioq->id;
     cmd->qsize = ioq->size - 1;
 
-    DEBUG_FN("t=%d h=%d cid=%#x sq=%d qs=%d", adminq->sq_tail, adminq->sq_head, cid, ioq->id, ioq->size);
+    DEBUG_FN("sq=%d-%d cid=%#x cq=%d qs=%d", adminq->sq_head, adminq->sq_tail, cid, ioq->id, ioq->size);
     int err = nvme_submit_cmd(adminq);
     if (!err) err = nvme_wait_completion(adminq, cid, 30);
     return err;
@@ -418,7 +418,7 @@ static inline int nvme_acmd_delete_ioq(nvme_queue_t* ioq, int opc)
     cmd->common.cid = cid;
     cmd->qid = ioq->id;
 
-    DEBUG_FN("t=%d h=%d cid=%#x %cq=%d", adminq->sq_tail, adminq->sq_head, cid,
+    DEBUG_FN("sq=%d-%d cid=%#x %cq=%d", adminq->sq_head, adminq->sq_tail, cid,
              opc == NVME_ACMD_DELETE_CQ ? 'c' : 's', ioq->id);
     int err = nvme_submit_cmd(adminq);
     if (!err) err = nvme_wait_completion(adminq, cid, 30);
@@ -470,8 +470,8 @@ int nvme_cmd_vs(nvme_queue_t* q, int opc, u16 cid, int nsid,
     cmd->common.prp1 = prp1;
     cmd->common.prp2 = prp2;
     if (cdw10_15) memcpy(cmd->cdw10_15, cdw10_15, sizeof(cmd->cdw10_15));
-    DEBUG_FN("q=%d t=%d h=%d cid=%#x nsid=%d opc=%#x",
-             q->id, q->sq_tail, q->sq_head, cid, nsid, opc);
+    DEBUG_FN("q=%d sq=%d-%d cid=%#x nsid=%d opc=%#x",
+             q->id, q->sq_head, q->sq_tail, cid, nsid, opc);
     return nvme_submit_cmd(q);
 }
 
@@ -500,8 +500,8 @@ int nvme_cmd_rw(nvme_queue_t* ioq, int opc, u16 cid, int nsid,
     cmd->common.prp2 = prp2;
     cmd->slba = slba;
     cmd->nlb = nlb - 1;
-    DEBUG_FN("q=%d t=%d h=%d cid=%#x nsid=%d lba=%#lx nb=%#x prp=%#lx.%#lx (%c)",
-             ioq->id, ioq->sq_tail, ioq->sq_head, cid, nsid, slba, nlb, prp1, prp2,
+    DEBUG_FN("q=%d sq=%d-%d cid=%#x nsid=%d lba=%#lx nb=%#x prp=%#lx.%#lx (%c)",
+             ioq->id, ioq->sq_head, ioq->sq_tail, cid, nsid, slba, nlb, prp1, prp2,
              opc == NVME_CMD_READ? 'R' : 'W');
     return nvme_submit_cmd(ioq);
 }
@@ -662,8 +662,12 @@ nvme_device_t* nvme_create(nvme_device_t* dev, int mapfd)
     dev->maxqsize = cap.mqes + 1;
     dev->dbstride = 1 << cap.dstrd;     // in u32 size offset
 
-    DEBUG_FN("cap=%#lx mps=%u-%u to=%u maxqs=%u dbs=%u", cap.val,
-             cap.mpsmin, cap.mpsmax, cap.to, dev->maxqsize, dev->dbstride);
+    dev->cmbloc.val = r32(dev, &dev->reg->cmbloc.val);
+    dev->cmbsz.val = r32(dev, &dev->reg->cmbsz.val);
+
+    DEBUG_FN("cap=%#lx mps=%u-%u to=%u maxqs=%u dbs=%u cmbloc=%#x cmbsz=%#x",
+             cap.val, cap.mpsmin, cap.mpsmax, cap.to, dev->maxqsize,
+             dev->dbstride, dev->cmbloc.val, dev->cmbsz.val);
 
     return dev;
 }

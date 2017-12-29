@@ -3,7 +3,6 @@
 *.so
 *.pyc
 *.*~
-src/.model
 src/unvmed
 test/unvme/*_test
 test/unvme/unvme_info

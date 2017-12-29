@@ -1,3 +1,4 @@
+#!/bin/python
 # Example to open a device and print its namespace info.
 #
 # This program shows 2 ways to invoke Python UNVMe interfaces:

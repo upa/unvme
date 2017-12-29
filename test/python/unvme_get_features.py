@@ -1,3 +1,4 @@
+#!/bin/python
 # Example to invoke admin get features command.
 #
 

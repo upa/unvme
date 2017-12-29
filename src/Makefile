@@ -31,28 +31,28 @@
 
 include ../Makefile.def
 
-TARGET = libunvme.a
-TARGET_SO = libunvme.so
+TARGET_LIB = libunvme.a
+TARGET_LIBSO = libunvme.so
 
 INCS = $(wildcard *.h)
 SRCS = $(wildcard *.c)
 OBJS = $(SRCS:.c=.o)
 LDLIBS = -lrt
 
-all: $(TARGET) $(TARGET_SO)
+all: $(TARGET_LIB) $(TARGET_LIBSO)
 
 $(OBJS): $(INCS)
 
-$(TARGET): $(OBJS)
+$(TARGET_LIB): $(OBJS)
 	$(AR) crs $@ $^
 
-$(TARGET_SO): $(OBJS)
+$(TARGET_LIBSO): $(OBJS)
 	$(CC) -shared -rdynamic -o $@ $^ -lrt
 
 %.i: %.c
 	$(CPP) $(CPPFLAGS) -o $@ $<
 
-lint: CFLAGS = -Wall -D_FORTIFY_SOURCE=2 -DUNVME_DEBUG -O3
+lint: CFLAGS = -Wall -O3 -D_FORTIFY_SOURCE=2 -DUNVME_DEBUG
 lint: clean $(OBJS)
 	@$(RM) *.o
 
