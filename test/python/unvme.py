@@ -46,6 +46,8 @@ class unvme_iod_t(ctypes.Structure):
 # Load libunvme
 libso = os.path.dirname(os.path.realpath(sys.argv[0])) + "/../../src/libunvme.so"
 if not os.path.exists(libso):
+    libso = "./libunvme.so"
+if not os.path.exists(libso):
     libso = "/usr/local/lib/libunvme.so"
 libunvme = cdll.LoadLibrary(libso)
 

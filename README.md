@@ -123,6 +123,12 @@ under the test/python directory.
     $ python test/python/unvme_wr_ex.py 0a:00.0
 
 
+Note:  For Python scripts that reside elsewhere, you need to copy "libunvme.so"
+and "unvme.py" to your working directory.  Alternatively, you can run
+"make install" and export PYTHONPATH to where unvme.py module is.
+
+
+
 I/O Benchmark Tests
 ===================
 
