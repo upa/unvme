@@ -53,19 +53,21 @@ int main(int argc, char** argv)
     }
 
     const unvme_ns_t* ns = unvme_open(argv[1]);
-    printf("Namespace:          %d (of %d)\n", ns->id, ns->nscount);
-    printf("Vendor ID:          %#x\n", ns->vid);
-    printf("Model number:       %.40s\n", ns->mn);
-    printf("Serial number:      %.20s\n", ns->sn);
-    printf("FW revision:        %.8s\n", ns->fr);
-    printf("Block count:        %#lx\n", ns->blockcount);
-    printf("Page count:         %#lx\n", ns->pagecount);
-    printf("Block size:         %d\n", ns->blocksize);
-    printf("Page size :         %d\n", ns->pagesize);
-    printf("Blocks per page:    %d\n", ns->nbpp);
-    printf("Max blocks per IO:  %d\n", ns->maxbpio);
-    printf("Max IO queue count: %d\n", ns->maxqcount);
-    printf("Max IO queue size:  %d\n", ns->maxqsize);
+    printf("Namespace:               %d (of %d)\n", ns->id, ns->nscount);
+    printf("Vendor ID:               %#x\n", ns->vid);
+    printf("Model number:            %.40s\n", ns->mn);
+    printf("Serial number:           %.20s\n", ns->sn);
+    printf("FW revision:             %.8s\n", ns->fr);
+    printf("Block count:             %#lx\n", ns->blockcount);
+    printf("Page count:              %#lx\n", ns->pagecount);
+    printf("Block size:              %d\n", ns->blocksize);
+    printf("Page size :              %d\n", ns->pagesize);
+    printf("Blocks per page:         %d\n", ns->nbpp);
+    printf("Max blocks per IO:       %d\n", ns->maxbpio);
+    printf("Default IO queue count:  %d\n", ns->qcount);
+    printf("Default IO queue size:   %d\n", ns->qsize);
+    printf("Max IO queue count:      %d\n", ns->maxqcount);
+    printf("Max IO queue size:       %d\n", ns->maxqsize);
     unvme_close(ns);
 
     return 0;

@@ -159,7 +159,7 @@ int nvme_check_completion(nvme_queue_t* q, int* stat, u32* cqe_cs)
     nvme_cq_entry_t* cqe = &q->cq[q->cq_head];
     if (cqe->p == q->cq_phase) return -1;
 
-    *stat = cqe->psf & 0xfe;
+    *stat = cqe->psf & 0xfffe;
     if (++q->cq_head == q->size) {
         q->cq_head = 0;
         q->cq_phase = !q->cq_phase;

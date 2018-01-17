@@ -11,20 +11,22 @@ from unvme import *
 
 # Print device info
 def print_info(ns):
-    print("PCI device:          %06x" % ns.pci)
-    print("Namespace:           %d (of %d)" % (ns.id, ns.nscount))
-    print("Vendor ID:           %#x" % ns.vid)
-    print("Model number:        %.40s" % str(ns.mn))
-    print("Serial number:       %.20s" % str(ns.sn))
-    print("FW revision:         %.8s" % str(ns.fr))
-    print("Block count:         %#lx" % ns.blockcount)
-    print("Page count:          %#lx" % ns.pagecount)
-    print("Block size:          %d" % ns.blocksize)
-    print("Page size :          %d" % ns.pagesize)
-    print("Blocks per page:     %d" % ns.nbpp)
-    print("Max blocks per IO:   %d" % ns.maxbpio)
-    print("Max IO queue count:  %d" % ns.maxqcount)
-    print("Max IO queue size:   %d" % ns.maxqsize)
+    print("PCI device:              %06x" % ns.pci)
+    print("Namespace:               %d (of %d)" % (ns.id, ns.nscount))
+    print("Vendor ID:               %#x" % ns.vid)
+    print("Model number:            %.40s" % str(ns.mn))
+    print("Serial number:           %.20s" % str(ns.sn))
+    print("FW revision:             %.8s" % str(ns.fr))
+    print("Block count:             %#lx" % ns.blockcount)
+    print("Page count:              %#lx" % ns.pagecount)
+    print("Block size:              %d" % ns.blocksize)
+    print("Page size :              %d" % ns.pagesize)
+    print("Blocks per page:         %d" % ns.nbpp)
+    print("Max blocks per IO:       %d" % ns.maxbpio)
+    print("Default IO queue count:  %d" % ns.qcount)
+    print("Default IO queue size:   %d" % ns.qsize)
+    print("Max IO queue count:      %d" % ns.maxqcount)
+    print("Max IO queue size:       %d" % ns.maxqsize)
 
 
 # Main
