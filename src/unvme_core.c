@@ -203,7 +203,6 @@ static u64 unvme_map_dma(const unvme_ns_t* ns, void* buf, u64 bufsz)
     u64 addr = (u64)buf & dev->vfiodev.iovamask;
 #else
     vfio_dma_t* dma = NULL;
-
     unvme_lockr(&dev->iomem.lock);
     int i;
     for (i = 0; i < dev->iomem.count; i++) {
@@ -211,20 +210,14 @@ static u64 unvme_map_dma(const unvme_ns_t* ns, void* buf, u64 bufsz)
         if (dma->buf <= buf && buf < (dma->buf + dma->size)) break;
     }
     unvme_unlockr(&dev->iomem.lock);
-    if (i == dev->iomem.count) {
-        ERROR("invalid I/O buffer address");
-        return -1L;
-    }
+    if (i == dev->iomem.count)
+        FATAL("invalid I/O buffer address");
     u64 addr = dma->addr + (u64)(buf - dma->buf);
-    if ((addr + bufsz) > (dma->addr + dma->size)) {
-        ERROR("buffer overrun");
-        return -1L;
-    }
+    if ((addr + bufsz) > (dma->addr + dma->size))
+        FATAL("buffer overrun");
 #endif
-    if ((addr & (ns->blocksize - 1)) != 0) {
-        ERROR("unaligned buffer address");
-        return -1L;
-    }
+    //if ((addr & (ns->blocksize - 1)) != 0)
+    //    FATAL("unaligned buffer address");
     return addr;
 }
 

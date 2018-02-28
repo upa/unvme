@@ -43,9 +43,9 @@
 
 /// @cond
 
-#define INFO(fmt, arg...)     log_msg(0, fmt "\n", ##arg)
-#define INFO_FN(fmt, arg...)  log_msg(0, "%s " fmt "\n", __func__, ##arg)
-#define ERROR(fmt, arg...)    log_msg(1, "ERROR: %s " fmt "\n", __func__, ##arg)
+#define INFO(fmt, arg...)     log_msg(NULL, fmt "\n", ##arg)
+#define INFO_FN(fmt, arg...)  log_msg(NULL, "%s " fmt "\n", __func__, ##arg)
+#define ERROR(fmt, arg...)    log_msg(stderr, "ERROR: %s " fmt "\n", __func__, ##arg)
 
 #ifdef UNVME_DEBUG
     #define DEBUG             INFO
@@ -63,7 +63,7 @@
 // Export function
 int log_open(const char* filename, const char* mode);
 void log_close();
-void log_msg(int err, const char* fmt, ...);
+void log_msg(FILE* ftee, const char* fmt, ...);
 
 
 /**

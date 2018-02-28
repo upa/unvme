@@ -88,20 +88,21 @@ void log_close()
 /**
  * Write a formatted message to log file, if log file is opened.
  * If err flag is set then log also to stderr.
- * @param   err         print to stderr indication
+ * @param   ftee        additional file to print to
  * @param   fmt         formatted message
  */
-void log_msg(int err, const char* fmt, ...)
+void log_msg(FILE* ftee, const char* fmt, ...)
 {
     va_list args;
 
     pthread_mutex_lock(&log_lock);
     if (log_fp) {
         va_start(args, fmt);
-        if (err) {
-            char s[256];
+        if (ftee) {
+            char s[4096];
             vsnprintf(s, sizeof(s), fmt, args);
-            fprintf(stderr, "%s", s);
+            fprintf(ftee, "%s", s);
+            fflush(ftee);
             fprintf(log_fp, "%s", s);
             fflush(log_fp);
         } else {
@@ -111,8 +112,9 @@ void log_msg(int err, const char* fmt, ...)
         va_end(args);
     } else {
         va_start(args, fmt);
-        if (err) {
-            vfprintf(stderr, fmt, args);
+        if (ftee) {
+            vfprintf(ftee, fmt, args);
+            fflush(ftee);
         } else {
             vfprintf(stdout, fmt, args);
             fflush(stdout);
