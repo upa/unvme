@@ -36,6 +36,8 @@
 
 #include <sched.h>
 
+__BEGIN_DECLS
+
 /// Lock write bit
 #define UNVME_LOCKWBIT      0x80000000
 
@@ -92,4 +94,6 @@ static inline void unvme_unlockw(unvme_lock_t* lock)
 {
     __sync_fetch_and_and(lock, ~UNVME_LOCKWBIT);
 }
+
+__END_DECLS
 

@@ -39,6 +39,8 @@
 
 #include <stdlib.h>
 #include <pthread.h>
+
+__BEGIN_DECLS
 #include <linux/vfio.h>
 
 /// VFIO dma allocation structure
@@ -86,6 +88,8 @@ vfio_dma_t* vfio_dma_map(vfio_device_t* dev, size_t size, void* pmb);
 int vfio_dma_unmap(vfio_dma_t* dma);
 vfio_dma_t* vfio_dma_alloc(vfio_device_t* dev, size_t size);
 int vfio_dma_free(vfio_dma_t* dma);
+
+__END_DECLS
 
 #endif // _UNVME_VFIO_H
 

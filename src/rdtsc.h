@@ -40,6 +40,7 @@
 #include <stdint.h>
 #include <unistd.h>
 
+__BEGIN_DECLS
 
 /**
  * Read tsc.
@@ -90,6 +91,8 @@ static inline uint64_t rdtsc_second()
     }
     return tsc_ps;
 }
+
+__END_DECLS
 
 #endif // _RDTSC_H
 

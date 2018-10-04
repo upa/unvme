@@ -39,6 +39,8 @@
 
 #include <stdint.h>
 
+__BEGIN_DECLS
+
 #ifndef _U_TYPE
 #define _U_TYPE                     ///< bit size data types
 typedef int8_t          s8;         ///< 8-bit signed
@@ -110,6 +112,8 @@ unvme_iod_t unvme_acmd(const unvme_ns_t* ns, int qid, int opc, int nsid, void* b
 
 int unvme_apoll(unvme_iod_t iod, int timeout);
 int unvme_apoll_cs(unvme_iod_t iod, int timeout, u32* cqe_cs);
+
+__END_DECLS
 
 #endif // _UNVME_H
 

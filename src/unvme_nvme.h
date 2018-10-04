@@ -39,6 +39,8 @@
 
 #include <stdint.h>
 
+__BEGIN_DECLS
+
 #if __BYTE_ORDER__ != __ORDER_LITTLE_ENDIAN__
     #pragma error "only support little endian CPU architecture"
 #endif
@@ -608,6 +610,8 @@ int nvme_cmd_write(nvme_queue_t* ioq, u16 cid, int nsid, u64 slba, int nlb, u64 
 
 int nvme_check_completion(nvme_queue_t* q, int* stat, u32* cqe_cs);
 int nvme_wait_completion(nvme_queue_t* q, int cid, int timeout);
+
+__END_DECLS
 
 #endif  // _UNVME_NVME_H
 

@@ -41,6 +41,8 @@
 #include <stdlib.h>
 #include <ctype.h>
 
+__BEGIN_DECLS
+
 /// @cond
 
 #define INFO(fmt, arg...)     log_msg(NULL, fmt "\n", ##arg)
@@ -73,7 +75,7 @@ void log_msg(FILE* ftee, const char* fmt, ...);
  */
 static inline void hex_dump(void* buf, int len)
 {
-    unsigned char* b = buf;
+    unsigned char* b = (unsigned char*)buf;
     int i, k = 0, e = 44, t = 44;
     char ss[3906];
 
@@ -110,6 +112,8 @@ static inline void* zalloc(int size)
     }
     return mem;
 }
+
+__END_DECLS
 
 #endif // _UNVME_LOG_H
 

@@ -45,6 +45,8 @@
 #include "unvme_lock.h"
 #include "unvme.h"
 
+__BEGIN_DECLS
+
 /// Doubly linked list add node
 #define LIST_ADD(head, node)                                    \
             if ((head) != NULL) {                               \
@@ -141,6 +143,8 @@ int unvme_do_free(const unvme_ns_t* ses, void* buf);
 int unvme_do_poll(unvme_desc_t* desc, int sec, u32* cqe_cs);
 unvme_desc_t* unvme_do_cmd(const unvme_ns_t* ns, int qid, int opc, int nsid, void* buf, u64 bufsz, u32 cdw10_15[6]);
 unvme_desc_t* unvme_do_rw(const unvme_ns_t* ns, int qid, int opc, void* buf, u64 slba, u32 nlb);
+
+__END_DECLS
 
 #endif  // _UNVME_CORE_H
 
