@@ -463,7 +463,11 @@ unvme_ns_t* unvme_do_open(int pci, int nsid, int qcount, int qsize)
     }
 
     // check noiommu mode
+#ifdef UNVME_DEFAULT_NOIOMMU
+    int noiommu = 1;
+#else
     int noiommu = 0;
+#endif
     char *noiommu_env = secure_getenv(UNVME_NOIOMMU_ENV);
     if (noiommu_env)
 	noiommu = atoi(noiommu_env);
