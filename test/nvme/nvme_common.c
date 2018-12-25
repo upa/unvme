@@ -36,7 +36,9 @@
 
 #include <stdio.h>
 #include <err.h>
+#include <stdlib.h>
 
+#include "unvme.h"
 #include "unvme_vfio.h"
 #include "unvme_nvme.h"
 #include "unvme_log.h"
@@ -52,14 +54,17 @@ static vfio_dma_t* admincq;
  */
 static void nvme_setup(const char* pciname, int aqsize)
 {
-    int b, d, f;
+    int b, d, f, noiommu = 0;
     if (sscanf(pciname, "%x:%x.%x", &b, &d, &f) != 3) {
         errx(1, "invalid PCI %s (expect %%x:%%x.%%x format)", pciname);
     }
     int pci = (b << 16) + (d << 8) + f;
 
+    if (secure_getenv(UNVME_NOIOMMU_ENV))
+	noiommu = atoi(secure_getenv(UNVME_NOIOMMU_ENV));
+
     if (log_open("/dev/shm/unvme.log", "w")) exit(1);
-    vfiodev = vfio_create(NULL, pci);
+    vfiodev = vfio_create(NULL, pci, noiommu);
     if (!vfiodev) errx(1, "vfio_create");
 
     nvmedev = nvme_create(NULL, vfiodev->fd);

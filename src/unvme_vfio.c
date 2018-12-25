@@ -57,6 +57,39 @@
 /// IRQ index names
 const char* vfio_irq_names[] = { "INTX", "MSI", "MSIX", "ERR", "REQ" };
 
+/**
+ * Get a physical address from a virtual address
+ * @param   virt	virtual memory address
+ * @return  physical memory address for the virt
+ * inherits https://github.com/mmisono/vfio-e1000/blob/master/e1000.c#L91
+ */
+static uintptr_t phy_addr(void* virt) {
+    int fd;
+    long pagesize;
+    off_t ret;
+    ssize_t rc;
+    uintptr_t entry = 0;
+
+    fd = open("/proc/self/pagemap", O_RDONLY);
+    if (fd < 0)
+	FATAL("open /proc/self/pagemap:", strerror(errno));
+
+    pagesize = sysconf(_SC_PAGESIZE);
+
+    ret = lseek(fd, (uintptr_t)virt / pagesize * sizeof(uintptr_t), SEEK_SET);
+    if (ret < 0)
+	FATAL("lseek for /proc/self/pagemap: %s\n", strerror(errno));
+
+
+    rc = read(fd, &entry, sizeof(entry));
+    if (rc < 1 || entry == 0)
+	FATAL("read for /proc/self/pagemap: %s\n", strerror(errno));
+
+    close(fd);
+
+    return (entry & 0x7fffffffffffffULL) * pagesize +
+           ((uintptr_t)virt) % pagesize;
+}
 
 /**
  * Read a vfio device.
@@ -110,25 +143,36 @@ static vfio_mem_t* vfio_mem_alloc(vfio_device_t* dev, size_t size, void* pmb)
     }
 
     pthread_mutex_lock(&dev->lock);
-    struct vfio_iommu_type1_dma_map map = {
-        .argsz = sizeof(map),
-        .flags = (VFIO_DMA_MAP_FLAG_READ | VFIO_DMA_MAP_FLAG_WRITE),
-        .size = (__u64)size,
-        .vaddr = (__u64)mem->dma.buf,
-#ifdef UNVME_IDENTITY_MAP_DMA
-        .iova = (__u64)mem->dma.buf & dev->iovamask,
-#else
-        .iova = dev->iovanext,
-#endif
-    };
+    if (!dev->noiommu) {
 
-    if (ioctl(dev->contfd, VFIO_IOMMU_MAP_DMA, &map) < 0) {
-        FATAL("VFIO_IOMMU_MAP_DMA: %s", strerror(errno));
+	struct vfio_iommu_type1_dma_map map = {
+	    .argsz = sizeof(map),
+	    .flags = (VFIO_DMA_MAP_FLAG_READ | VFIO_DMA_MAP_FLAG_WRITE),
+	    .size = (__u64)size,
+	    .vaddr = (__u64)mem->dma.buf,
+#ifdef UNVME_IDENTITY_MAP_DMA
+	    .iova = (__u64)mem->dma.buf & dev->iovamask,
+#else
+	    .iova = dev->iovanext,
+#endif
+	};
+
+	if (ioctl(dev->contfd, VFIO_IOMMU_MAP_DMA, &map) < 0) {
+	    FATAL("VFIO_IOMMU_MAP_DMA: %s", strerror(errno));
+	}
+	mem->dma.size = size;
+	mem->dma.addr = map.iova;
+	mem->dma.mem = mem;
+	mem->dev = dev;
+
+	dev->iovanext = map.iova + size;
+	DEBUG_FN("%x %#lx %#lx %#lx", dev->pci, map.iova, map.size, dev->iovanext);
+    } else {
+	mem->dma.size = size;
+	mem->dma.addr = phy_addr(mem->dma.buf);
+	mem->dma.mem = mem;
+	mem->dev = dev;
     }
-    mem->dma.size = size;
-    mem->dma.addr = map.iova;
-    mem->dma.mem = mem;
-    mem->dev = dev;
 
     // add node to the memory list
     if (!dev->memlist) {
@@ -141,8 +185,7 @@ static vfio_mem_t* vfio_mem_alloc(vfio_device_t* dev, size_t size, void* pmb)
         dev->memlist->prev->next = mem;
         dev->memlist->prev = mem;
     }
-    dev->iovanext = map.iova + size;
-    DEBUG_FN("%x %#lx %#lx %#lx", dev->pci, map.iova, map.size, dev->iovanext);
+
     pthread_mutex_unlock(&dev->lock);
 
     return mem;
@@ -164,7 +207,7 @@ int vfio_mem_free(vfio_mem_t* mem)
     };
 
     // unmap and free dma memory
-    if (mem->dma.buf) {
+    if (!dev->noiommu && mem->dma.buf) {
         if (ioctl(dev->contfd, VFIO_IOMMU_UNMAP_DMA, &unmap) < 0)
             FATAL("VFIO_IOMMU_UNMAP_DMA: %s", strerror(errno));
     }
@@ -298,9 +341,10 @@ void vfio_msix_disable(vfio_device_t* dev)
  * Create a VFIO device context.
  * @param   dev         if NULL then allocate context
  * @param   pci         PCI device id (as %x:%x.%x format)
+ * @param   noiommu	0 is to use iommu, otherwise no-iommu mode
  * @return  device context or NULL if failure.
  */
-vfio_device_t* vfio_create(vfio_device_t* dev, int pci)
+vfio_device_t* vfio_create(vfio_device_t* dev, int pci, int noiommu)
 {
     // map PCI to vfio device number
     int i;
@@ -312,7 +356,10 @@ vfio_device_t* vfio_create(vfio_device_t* dev, int pci)
     if ((i = readlink(path, path, sizeof(path))) < 0)
         FATAL("No iommu_group associated with device %s", pciname);
     path[i] = 0;
-    sprintf(path, "/dev/vfio%s", strrchr(path, '/'));
+    if (!noiommu)
+	sprintf(path, "/dev/vfio%s", strrchr(path, '/'));
+    else
+	sprintf(path, "/dev/vfio/noiommu-%s", strrchr(path, '/') + 1);
     
     struct vfio_group_status group_status = { .argsz = sizeof(group_status) };
     struct vfio_iommu_type1_info iommu_info = { .argsz = sizeof(iommu_info) };
@@ -325,6 +372,7 @@ vfio_device_t* vfio_create(vfio_device_t* dev, int pci)
     dev->pagesize = sysconf(_SC_PAGESIZE);
     dev->iovabase = VFIO_IOVA;
     dev->iovanext = dev->iovabase;
+    dev->noiommu  = noiommu;
     if (pthread_mutex_init(&dev->lock, 0)) return NULL;
 
     // map vfio context
@@ -349,11 +397,15 @@ vfio_device_t* vfio_create(vfio_device_t* dev, int pci)
     if (ioctl(dev->groupfd, VFIO_GROUP_SET_CONTAINER, &dev->contfd) < 0)
         FATAL("ioctl VFIO_GROUP_SET_CONTAINER");
 
-    if (ioctl(dev->contfd, VFIO_SET_IOMMU, VFIO_TYPE1_IOMMU) < 0)
-        FATAL("ioctl VFIO_SET_IOMMU");
-
-    if (ioctl(dev->contfd, VFIO_IOMMU_GET_INFO, &iommu_info) < 0)
-        FATAL("ioctl VFIO_IOMMU_GET_INFO");
+    if (!dev->noiommu) {
+	if (ioctl(dev->contfd, VFIO_SET_IOMMU, VFIO_TYPE1_IOMMU) < 0)
+	    FATAL("ioctl VFIO_SET_IOMMU");
+	if (ioctl(dev->contfd, VFIO_IOMMU_GET_INFO, &iommu_info) < 0)
+	    FATAL("ioctl VFIO_IOMMU_GET_INFO");
+    } else {
+	if (ioctl(dev->contfd, VFIO_SET_IOMMU, VFIO_NOIOMMU_IOMMU) < 0)
+	    FATAL("ioctl VFIO_SET_IOMMU");
+    }
 
     dev->fd = ioctl(dev->groupfd, VFIO_GROUP_GET_DEVICE_FD, pciname);
     if (dev->fd < 0)
@@ -414,6 +466,9 @@ vfio_device_t* vfio_create(vfio_device_t* dev, int pci)
         if (i == VFIO_PCI_MSIX_IRQ_INDEX && irq.count != dev->msixsize)
             FATAL("VFIO_DEVICE_GET_IRQ_INFO MSIX count %d != %d", irq.count, dev->msixsize);
     }
+
+    if (dev->noiommu)
+	return (vfio_device_t *)dev;
 
 #ifdef  UNVME_IDENTITY_MAP_DMA
     // Set up mask to support identity IOVA map option

@@ -71,6 +71,7 @@ typedef struct _vfio_device {
     int                     msixnvec;   ///< number of enabled MSIX vectors
     int                     pagesize;   ///< system page size
     int                     ext;        ///< externally allocated flag
+    int                     noiommu;	///< No iommu mode flag
     __u64                   iovabase;   ///< IO virtual address base
     __u64                   iovanext;   ///< next IO virtual address to use
     __u64                   iovamask;   ///< max IO virtual address mask
@@ -79,7 +80,7 @@ typedef struct _vfio_device {
 } vfio_device_t;
 
 // Export functions
-vfio_device_t* vfio_create(vfio_device_t* dev, int pci);
+vfio_device_t* vfio_create(vfio_device_t* dev, int pci, int noiommu);
 void vfio_delete(vfio_device_t* dev);
 void vfio_msix_enable(vfio_device_t* dev, int start, int nvec, __s32* efds);
 void vfio_msix_disable(vfio_device_t* dev);

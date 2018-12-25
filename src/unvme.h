@@ -56,6 +56,8 @@ typedef uint64_t        u64;        ///< 64-bit unsigned
 #define UNVME_TIMEOUT   60          ///< default timeout in seconds
 #define UNVME_QSIZE     256         ///< default I/O queue size
 
+#define UNVME_NOIOMMU_ENV	"UNVME_NOIOMMU"	///< env var for noiommu mode
+
 /// Namespace attributes structure
 typedef struct _unvme_ns {
     u32                 pci;        ///< PCI device id

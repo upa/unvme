@@ -462,6 +462,12 @@ unvme_ns_t* unvme_do_open(int pci, int nsid, int qcount, int qsize)
         }
     }
 
+    // check noiommu mode
+    int noiommu = 0;
+    char *noiommu_env = secure_getenv(UNVME_NOIOMMU_ENV);
+    if (noiommu_env)
+	noiommu = atoi(noiommu_env);
+
     // check for existing opened device
     unvme_session_t* xses = unvme_ses;
     while (xses) {
@@ -486,7 +492,7 @@ unvme_ns_t* unvme_do_open(int pci, int nsid, int qcount, int qsize)
     } else {
         // setup controller namespace
         dev = zalloc(sizeof(unvme_device_t));
-        vfio_create(&dev->vfiodev, pci);
+        vfio_create(&dev->vfiodev, pci, noiommu);
         nvme_create(&dev->nvmedev, dev->vfiodev.fd);
         unvme_adminq_create(dev, 64);
 
