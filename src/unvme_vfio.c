@@ -46,6 +46,7 @@
 #include <errno.h>
 
 #include "unvme_vfio.h"
+#include "unvme_hugetlb.h"
 #include "unvme_log.h"
 
 /// Print fatal error and exit
@@ -56,40 +57,6 @@
 
 /// IRQ index names
 const char* vfio_irq_names[] = { "INTX", "MSI", "MSIX", "ERR", "REQ" };
-
-/**
- * Get a physical address from a virtual address
- * @param   virt	virtual memory address
- * @return  physical memory address for the virt
- * inherits https://github.com/mmisono/vfio-e1000/blob/master/e1000.c#L91
- */
-static uintptr_t phy_addr(void* virt) {
-    int fd;
-    long pagesize;
-    off_t ret;
-    ssize_t rc;
-    uintptr_t entry = 0;
-
-    fd = open("/proc/self/pagemap", O_RDONLY);
-    if (fd < 0)
-	FATAL("open /proc/self/pagemap:", strerror(errno));
-
-    pagesize = sysconf(_SC_PAGESIZE);
-
-    ret = lseek(fd, (uintptr_t)virt / pagesize * sizeof(uintptr_t), SEEK_SET);
-    if (ret < 0)
-	FATAL("lseek for /proc/self/pagemap: %s\n", strerror(errno));
-
-
-    rc = read(fd, &entry, sizeof(entry));
-    if (rc < 1 || entry == 0)
-	FATAL("read for /proc/self/pagemap: %s\n", strerror(errno));
-
-    close(fd);
-
-    return (entry & 0x7fffffffffffffULL) * pagesize +
-           ((uintptr_t)virt) % pagesize;
-}
 
 /**
  * Read a vfio device.
@@ -134,6 +101,8 @@ static vfio_mem_t* vfio_mem_alloc(vfio_device_t* dev, size_t size, void* pmb)
 
     if (pmb) {
         mem->dma.buf = pmb;
+    } else if (dev->noiommu) {
+	hugetlb_mem_alloc(&mem->dma, size);
     } else {
         mem->dma.buf = mmap(0, size, PROT_READ|PROT_WRITE,
                             MAP_PRIVATE|MAP_ANONYMOUS|MAP_LOCKED, -1, 0);
@@ -168,8 +137,6 @@ static vfio_mem_t* vfio_mem_alloc(vfio_device_t* dev, size_t size, void* pmb)
 	dev->iovanext = map.iova + size;
 	DEBUG_FN("%x %#lx %#lx %#lx", dev->pci, map.iova, map.size, dev->iovanext);
     } else {
-	mem->dma.size = size;
-	mem->dma.addr = phy_addr(mem->dma.buf);
 	mem->dma.mem = mem;
 	mem->dev = dev;
     }
@@ -207,13 +174,17 @@ int vfio_mem_free(vfio_mem_t* mem)
     };
 
     // unmap and free dma memory
-    if (!dev->noiommu && mem->dma.buf) {
-        if (ioctl(dev->contfd, VFIO_IOMMU_UNMAP_DMA, &unmap) < 0)
-            FATAL("VFIO_IOMMU_UNMAP_DMA: %s", strerror(errno));
-    }
-    if (mem->mmap) {
-        if (munmap(mem->dma.buf, mem->dma.size) < 0)
-            FATAL("munmap: %s", strerror(errno));
+    if (!dev->noiommu) {
+	if (mem->dma.buf) {
+	    if (ioctl(dev->contfd, VFIO_IOMMU_UNMAP_DMA, &unmap) < 0)
+		FATAL("VFIO_IOMMU_UNMAP_DMA: %s", strerror(errno));
+	}
+	if (mem->mmap) {
+	    if (munmap(mem->dma.buf, mem->dma.size) < 0)
+		FATAL("munmap: %s", strerror(errno));
+	}
+    } else {
+	hugetlb_mem_free(&mem->dma);
     }
 
     // remove node from memory list
@@ -467,8 +438,10 @@ vfio_device_t* vfio_create(vfio_device_t* dev, int pci, int noiommu)
             FATAL("VFIO_DEVICE_GET_IRQ_INFO MSIX count %d != %d", irq.count, dev->msixsize);
     }
 
-    if (dev->noiommu)
+    if (dev->noiommu) {
+	hugetlb_init();
 	return (vfio_device_t *)dev;
+    }
 
 #ifdef  UNVME_IDENTITY_MAP_DMA
     // Set up mask to support identity IOVA map option
