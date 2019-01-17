@@ -45,8 +45,8 @@ __BEGIN_DECLS
 
 /// @cond
 
-#define INFO(fmt, arg...)     log_msg(NULL, fmt "\n", ##arg)
-#define INFO_FN(fmt, arg...)  log_msg(NULL, "%s " fmt "\n", __func__, ##arg)
+#define INFO(fmt, arg...)     log_msg(stdout, fmt "\n", ##arg)
+#define INFO_FN(fmt, arg...)  log_msg(stdout, "%s " fmt "\n", __func__, ##arg)
 #define ERROR(fmt, arg...)    log_msg(stderr, "ERROR: %s " fmt "\n", __func__, ##arg)
 
 #ifdef UNVME_DEBUG

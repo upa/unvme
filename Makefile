@@ -39,11 +39,21 @@ $(SUBDIRS):
 
 install: uninstall all
 	mkdir -p $(INSTALLDIR)/include $(INSTALLDIR)/lib $(INSTALLDIR)/bin
-	/usr/bin/install -m644 src/unvme{,_log,_nvme,_vfio}.h $(INSTALLDIR)/include
+	#/usr/bin/install -m644 src/unvme{,_log,_nvme,_vfio}.h $(INSTALLDIR)/include
+	/usr/bin/install -m644 src/unvme.h $(INSTALLDIR)/include
+	/usr/bin/install -m644 src/unvme_log.h $(INSTALLDIR)/include
+	/usr/bin/install -m644 src/unvme_nvme.h $(INSTALLDIR)/include
+	/usr/bin/install -m644 src/unvme_vfio.h $(INSTALLDIR)/include
 	/usr/bin/install -m644 src/libunvme.* $(INSTALLDIR)/lib
 	/usr/bin/install -m755 test/unvme-setup $(INSTALLDIR)/bin
-	/usr/bin/install -m755 test/unvme/unvme_{info,wrc} $(INSTALLDIR)/bin
-	/usr/bin/install -m755 test/unvme/unvme_{sim,api,mts,mcd}_test $(INSTALLDIR)/bin
+	#/usr/bin/install -m755 test/unvme/unvme_{info,wrc} $(INSTALLDIR)/bin
+	/usr/bin/install -m755 test/unvme/unvme_info $(INSTALLDIR)/bin
+	/usr/bin/install -m755 test/unvme/unvme_wrc $(INSTALLDIR)/bin
+	#/usr/bin/install -m755 test/unvme/unvme_{sim,api,mts,mcd}_test $(INSTALLDIR)/bin
+	/usr/bin/install -m755 test/unvme/unvme_sim_test $(INSTALLDIR)/bin
+	/usr/bin/install -m755 test/unvme/unvme_api_test $(INSTALLDIR)/bin
+	/usr/bin/install -m755 test/unvme/unvme_mts_test $(INSTALLDIR)/bin
+	/usr/bin/install -m755 test/unvme/unvme_mcd_test $(INSTALLDIR)/bin
 
 uninstall:
 	$(RM) $(INSTALLDIR)/include/unvme* \

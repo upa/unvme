@@ -35,3 +35,8 @@ fio/t/gen-rand
 fio/t/ieee754
 fio/t/lfsr-test
 fio/t/stest
+
+GPATH
+GRTAGS
+GTAGS
+*core
