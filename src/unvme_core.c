@@ -33,11 +33,13 @@
  * @file
  * @brief UNVMe driver module.
  */
+#define _GNU_SOURCE
 
 #include <sys/mman.h>
 #include <string.h>
 #include <signal.h>
 #include <sched.h>
+#include <stdlib.h>
 
 #include "rdtsc.h"
 #include "unvme_core.h"
@@ -199,6 +201,14 @@ static u16 unvme_get_cid(unvme_desc_t* desc)
 static u64 unvme_map_dma(const unvme_ns_t* ns, void* buf, u64 bufsz)
 {
     unvme_device_t* dev = ((unvme_session_t*)ns->ses)->dev;
+
+    /* boogiepop integration. if this buf is on the boogiepop memory.
+     * return the physical addr of the buf. */
+    u64 paddr;
+    paddr = unvme_pop_virt_to_phys(buf);
+    if (paddr)
+	return paddr;
+
 #ifdef UNVME_IDENTITY_MAP_DMA
     u64 addr = (u64)buf & dev->vfiodev.iovamask;
 #else

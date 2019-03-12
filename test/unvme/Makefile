@@ -40,6 +40,10 @@ UNVME_SRC = ../../src
 CPPFLAGS += -I$(UNVME_SRC)
 LDLIBS += -lrt -lpthread
 
+CPPFLAGS += -I../../../include
+LDFLAGS  += -L../../../lib
+LDLIBS   += -lpop
+
 OBJS = $(addsuffix .o, $(TARGETS))
 
 all: $(TARGETS)

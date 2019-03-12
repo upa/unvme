@@ -39,6 +39,11 @@ SRCS = $(wildcard *.c)
 OBJS = $(SRCS:.c=.o)
 LDLIBS = -lrt
 
+CPPFLAGS += -I../../include
+LDFLAGS  += -L../../lib
+LDLIBS   += -lpop
+
+
 all: $(TARGET_LIB) $(TARGET_LIBSO)
 
 $(OBJS): $(INCS)

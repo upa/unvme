@@ -38,6 +38,7 @@
 #define _UNVME_H
 
 #include <stdint.h>
+#include <libpop.h>
 
 __BEGIN_DECLS
 
@@ -84,6 +85,7 @@ typedef struct _unvme_ns {
     u32                 qsize;      ///< I/O queue size
     u32                 maxqsize;   ///< max queue size supported
     void*               ses;        ///< associated session
+    pop_mem_t*		pop_mem;
 } unvme_ns_t;
 
 /// I/O descriptor (not to be copied and is cleared upon apoll completion)
@@ -114,6 +116,19 @@ unvme_iod_t unvme_acmd(const unvme_ns_t* ns, int qid, int opc, int nsid, void* b
 
 int unvme_apoll(unvme_iod_t iod, int timeout);
 int unvme_apoll_cs(unvme_iod_t iod, int timeout, u32* cqe_cs);
+
+
+/* boogiepop integration:
+ *
+ * you can use boogiepop memory for unvme_(a){read|write} if the
+ * memory is registered to unvme_ns_t.
+ */
+void unvme_register_pop_mem(pop_mem_t *mem);
+
+/* unvme_pop_virt_to_phys returns pyhsical addr of buf if buf is on
+ * the boogiepop memory*/
+uintptr_t unvme_pop_virt_to_phys(void *buf);
+
 
 __END_DECLS
 
