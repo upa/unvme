@@ -33,7 +33,6 @@
  * @file
  * @brief UNVMe driver module.
  */
-#define _GNU_SOURCE
 
 #include <sys/mman.h>
 #include <string.h>

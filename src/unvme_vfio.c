@@ -438,10 +438,8 @@ vfio_device_t* vfio_create(vfio_device_t* dev, int pci, int noiommu)
             FATAL("VFIO_DEVICE_GET_IRQ_INFO MSIX count %d != %d", irq.count, dev->msixsize);
     }
 
-    if (dev->noiommu) {
-	hugetlb_init();
+    if (dev->noiommu)
 	return (vfio_device_t *)dev;
-    }
 
 #ifdef  UNVME_IDENTITY_MAP_DMA
     // Set up mask to support identity IOVA map option
