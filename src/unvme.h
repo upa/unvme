@@ -84,8 +84,8 @@ typedef struct _unvme_ns {
     u32                 maxqcount;  ///< max number of queues supported
     u32                 qsize;      ///< I/O queue size
     u32                 maxqsize;   ///< max queue size supported
-    void*               ses;        ///< associated session
     pop_mem_t*		pop_mem;
+    void*               ses;        ///< associated session
 } unvme_ns_t;
 
 /// I/O descriptor (not to be copied and is cleared upon apoll completion)
